@@ -1,0 +1,52 @@
+# Auth and Supabase Setup
+
+This app uses normal email/password auth for both Customer and Business accounts. Supabase is used as the PostgreSQL database for users, products, orders, and store data.
+
+## Supabase database
+
+1. Go to `https://supabase.com/dashboard`.
+2. Open your project, or create a new project.
+3. Go to `Project Settings` -> `Database`.
+4. Copy the database password or reset it if you do not know it.
+5. Copy the database host or pooler connection details.
+
+Set these values in `.env` locally and in your deployment provider:
+
+```text
+SUPABASE_DB_HOST=your-supabase-db-or-pooler-host
+SUPABASE_DB_PORT=5432
+SUPABASE_DB_NAME=postgres
+SUPABASE_DB_USER=postgres
+SUPABASE_DB_PASSWORD=your-real-database-password
+```
+
+If Supabase gives you a pooler user like `postgres.<project-ref>`, put that full value in `SUPABASE_DB_USER`.
+
+## Production values
+
+```text
+APP_ENV=production
+FLASK_SECRET_KEY=a-long-random-secret
+PUBLIC_BASE_URL=https://your-live-domain.com
+```
+
+With `APP_ENV=production`, the app will fail fast if Supabase cannot connect. In development it may fall back to local SQLite so you can still test the storefront.
+
+## Verify
+
+Open:
+
+```text
+http://127.0.0.1:5000/api/health
+```
+
+For production, you want:
+
+```json
+{
+  "store_mode": "postgresql",
+  "supabase_connected": true
+}
+```
+
+Then test Customer signup/login and Business signup/login from the storefront.

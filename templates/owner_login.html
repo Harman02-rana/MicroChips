@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Owner Login | Microchip Cart</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=owner-panel-v1">
+  </head>
+  <body class="admin-login-page owner-login-page">
+    <main class="login-shell">
+      <section class="login-card owner-login-card">
+        <a class="brand-lockup" href="/owner/login">
+          <span class="brand-mark">MC</span>
+          <div>
+            <h1>Owner Access</h1>
+            <p>Company-only intelligence panel</p>
+          </div>
+        </a>
+        <form id="ownerLoginForm">
+          <label>Email<input name="email" type="email" value="{{ owner_email }}" required></label>
+          <label>Password<input name="password" type="password" required></label>
+          <button type="submit">Open owner panel</button>
+        </form>
+        <p class="hint">Use `OWNER_EMAIL` and `OWNER_PASSWORD` in your environment.</p>
+      </section>
+    </main>
+    <div class="toast" id="toast"></div>
+    <script>
+      const toast = message => {
+        const el = document.querySelector("#toast");
+        el.textContent = message;
+        el.classList.add("show");
+        setTimeout(() => el.classList.remove("show"), 2400);
+      };
+      document.querySelector("#ownerLoginForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+        try {
+          const res = await fetch("/api/owner/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          if (!data.ok) throw new Error(data.error || "Login failed");
+          location.href = data.redirect_url || "/owner";
+        } catch (error) {
+          toast(error.message);
+        }
+      });
+    </script>
+  </body>
+</html>

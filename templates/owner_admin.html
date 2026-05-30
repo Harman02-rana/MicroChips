@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Owner Command | Microchip Cart</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=owner-panel-v1">
+  </head>
+  <body>
+    <div class="admin-shell owner-shell">
+      <aside class="sidebar owner-sidebar">
+        <a class="brand-lockup" href="/owner">
+          <span class="brand-mark">MC</span>
+          <div>
+            <strong>Owner Command</strong>
+            <small>{{ store_mode }}</small>
+          </div>
+        </a>
+        <nav class="side-nav" aria-label="Owner navigation">
+          <button class="active" type="button" data-owner-panel="overview">Overview</button>
+          <button type="button" data-owner-panel="customers">Customers</button>
+          <button type="button" data-owner-panel="businesses">Distributors</button>
+          <button type="button" data-owner-panel="commerce">Commerce</button>
+          <button type="button" data-owner-panel="products">Products</button>
+          <button type="button" data-owner-panel="insights">Insights</button>
+        </nav>
+        <div class="side-footer">
+          <button class="ghost-btn" id="themeToggle" type="button">Theme</button>
+          <button class="ghost-btn" id="logoutBtn" type="button">Logout</button>
+        </div>
+      </aside>
+
+      <main class="admin-main owner-main">
+        <header class="admin-topbar">
+          <div>
+            <p class="eyebrow">Company only</p>
+            <h1 id="ownerPanelTitle">Overview</h1>
+          </div>
+          <div class="admin-meta">
+            <span>{{ owner_email }}</span>
+            <a href="/admin">Business admin</a>
+            <a href="/" target="_blank" rel="noreferrer">Storefront</a>
+          </div>
+        </header>
+
+        <section class="panel active" id="ownerOverviewPanel">
+          <div class="stat-grid owner-stat-grid" id="ownerSummaryCards"></div>
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Business snapshot</h2>
+                <button type="button" data-owner-jump="businesses">View distributors</button>
+              </div>
+              <div id="ownerBusinessSnapshot" class="stack-list"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Customer snapshot</h2>
+                <button type="button" data-owner-jump="customers">View users</button>
+              </div>
+              <div id="ownerCustomerSnapshot" class="stack-list"></div>
+            </article>
+          </div>
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Recent commerce</h2>
+                <button type="button" data-owner-jump="commerce">Open orders</button>
+              </div>
+              <div id="ownerRecentOrders" class="stack-list"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Attention needed</h2>
+                <button type="button" data-owner-jump="insights">Inspect</button>
+              </div>
+              <div id="ownerAttentionList" class="stack-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="ownerCustomersPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Customer users</h2>
+              <input class="admin-search" id="ownerCustomerSearch" placeholder="Search customers, email, phone...">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Orders</th>
+                    <th>Spend</th>
+                    <th>Last login</th>
+                  </tr>
+                </thead>
+                <tbody id="ownerCustomersTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel" id="ownerBusinessesPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Business distributors</h2>
+              <input class="admin-search" id="ownerBusinessSearch" placeholder="Search company, GSTIN, email...">
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Company</th>
+                    <th>Contact</th>
+                    <th>GSTIN</th>
+                    <th>Orders</th>
+                    <th>Spend</th>
+                    <th>Last login</th>
+                  </tr>
+                </thead>
+                <tbody id="ownerBusinessesTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel" id="ownerCommercePanel">
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Order mix</h2>
+                <span id="ownerOrderCount">0 orders</span>
+              </div>
+              <div id="ownerOrderMix" class="analytics-bars"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Activity funnel</h2>
+                <span id="ownerFunnelBadge">Live behavior</span>
+              </div>
+              <div id="ownerFunnel" class="analytics-bars"></div>
+            </article>
+          </div>
+          <article class="card">
+            <div class="card-head">
+              <h2>All orders</h2>
+              <select id="ownerOrderFilter">
+                <option value="all">All orders</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div id="ownerOrdersList" class="order-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="ownerProductsPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Product intelligence</h2>
+              <span id="ownerProductCount">0 products</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Stock</th>
+                    <th>Views</th>
+                    <th>Cart adds</th>
+                    <th>Units</th>
+                    <th>Revenue</th>
+                    <th>Conversion</th>
+                  </tr>
+                </thead>
+                <tbody id="ownerProductsTable"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel" id="ownerInsightsPanel">
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Categories</h2>
+                <span>Catalog spread</span>
+              </div>
+              <div id="ownerCategoryBars" class="analytics-bars"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Low stock</h2>
+                <span>Restock watch</span>
+              </div>
+              <div id="ownerLowStock" class="stack-list"></div>
+            </article>
+          </div>
+          <article class="card">
+            <div class="card-head">
+              <h2>User and business activity</h2>
+              <span>Latest behavior signals</span>
+            </div>
+            <div id="ownerActivityList" class="stack-list"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast"></div>
+    <script src="{{ url_for('static', filename='js/owner.js') }}?v=owner-panel-v1"></script>
+  </body>
+</html>

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ settings.store_name or "Microchip Cart" }}</title>
+    <meta name="description" content="Microchip Cart is a B2B and B2C ecommerce storefront for verified electronic components, order approvals, invoices, and distributor-ready workflows.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=video-dark-cyan-theme">
+  </head>
+  <body data-page="{{ page_mode or 'home' }}">
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Microchip Cart home">
+        <span class="brand-mark">MC</span>
+        <span>
+          <strong id="storeName">{{ settings.store_name or "Microchip Cart" }}</strong>
+          <small>Embedded parts store</small>
+        </span>
+      </a>
+      <form class="search" id="searchForm">
+        <input id="searchInput" type="search" placeholder="Search MCU, module, SKU..." autocomplete="off">
+        <div class="search-suggestions hidden" id="searchSuggestions" role="listbox" aria-label="Search suggestions"></div>
+      </form>
+      <nav class="header-actions" aria-label="Main actions">
+        <button class="text-btn" id="ordersBtn" type="button">Orders</button>
+        <button class="cart-btn" id="cartBtn" type="button" aria-label="Open cart">
+          <span aria-hidden="true">&#128722;</span>
+          <strong id="cartCount">0</strong>
+        </button>
+        <button class="wishlist-btn" id="wishlistBtn" type="button" aria-label="View wishlist">
+          <span aria-hidden="true">&#9825;</span>
+          <strong id="wishlistCount">0</strong>
+        </button>
+        <div class="account-menu" id="guestAccountMenu">
+          <button class="text-btn account-trigger" id="authBtn" type="button" aria-haspopup="true" aria-expanded="false">
+            Create account
+          </button>
+          <div class="account-dropdown" id="guestAccountDropdown" role="menu">
+            <button type="button" id="guestSignupBtn" role="menuitem"><span>Create an account</span><small>Shop faster and track orders</small></button>
+            <button type="button" id="guestLoginBtn" role="menuitem"><span>Login</span><small>Access orders and wishlist</small></button>
+            <button type="button" id="guestBusinessBtn" role="menuitem"><span>Switch to business account</span><small>GST invoices and business orders</small></button>
+          </div>
+        </div>
+        <div class="profile-menu hidden" id="profileMenu">
+          <button class="profile-trigger" id="profileBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
+            <span id="profileInitial">U</span>
+          </button>
+          <div class="profile-dropdown" id="profileDropdown" role="menu">
+            <div class="profile-summary">
+              <span id="profileDropdownInitial">U</span>
+              <div>
+                <strong id="profileName">User</strong>
+                <small id="profileEmail">Signed in</small>
+              </div>
+            </div>
+            <div class="profile-menu-grid">
+              <button type="button" id="profileOrdersBtn" role="menuitem"><span>Orders</span><small>Track purchases</small></button>
+              <button type="button" id="profileCartBtn" role="menuitem"><span>Cart</span><small>Review items</small></button>
+              <button type="button" id="profileWishlistBtn" role="menuitem"><span>Wishlist</span><small>Saved products</small></button>
+              <button type="button" id="profileSettingsBtn" role="menuitem"><span>Settings</span><small>Profile, privacy, theme</small></button>
+            </div>
+            <button class="profile-logout" type="button" id="profileLogoutBtn" role="menuitem">Logout</button>
+          </div>
+        </div>
+        <button class="icon-btn" id="themeToggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+          <span data-icon="sun" aria-hidden="true">&#9728;</span>
+        </button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="shop-hero">
+        <div>
+          <p class="eyebrow">B2B/B2C component marketplace</p>
+          {% if page_mode == "products" %}
+          <h1>Products ready for direct buyers and business purchase teams.</h1>
+          <p id="announcement">Search verified components, compare specs, and place approval-ready orders.</p>
+          {% else %}
+          <h1>Verified microchips, transparent specs, and approval-ready orders.</h1>
+          <p id="announcement">{{ settings.announcement or "Precision components, clear specs, fast order approval." }}</p>
+          <div class="hero-actions">
+            <a class="primary-btn" href="{{ url_for('products_page') }}">Browse products</a>
+            <button class="secondary-btn" id="heroBusinessBtn" type="button">Business login</button>
+          </div>
+          {% endif %}
+        </div>
+        <div class="popular-hero-panel" id="popularHeroPanel" aria-label="Most popular product"></div>
+        <div class="hero-metrics" aria-label="Store highlights">
+          <span><strong id="heroProductCount">3</strong> products</span>
+          <span><strong>18%</strong> GST shown</span>
+          <span><strong>B2B</strong> invoices</span>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="Buyer and distributor promises">
+        <div>
+          <strong>Verified stock</strong>
+          <span>Compare specs, prices, ratings, and stock before checkout.</span>
+        </div>
+        <div>
+          <strong>Fast checkout</strong>
+          <span>COD, UPI, card options, GST invoices, and order tracking.</span>
+        </div>
+        <div>
+          <strong>Buyer protection</strong>
+          <span>Returns, support, and clear order help.</span>
+        </div>
+      </section>
+
+      <section class="toolbar">
+        <div>
+          <p class="eyebrow">{% if page_mode == "products" %}Products{% else %}Featured catalog{% endif %}</p>
+          <h2 class="section-title">{% if page_mode == "products" %}All components{% else %}Popular components{% endif %}</h2>
+        </div>
+        <div class="segmented" id="categoryFilters" aria-label="Category filters"></div>
+        <select id="sortSelect" aria-label="Sort products">
+          <option value="featured">Featured</option>
+          <option value="price-low">Price low to high</option>
+          <option value="price-high">Price high to low</option>
+          <option value="rating">Top rated</option>
+        </select>
+      </section>
+
+      <section class="sample-note hidden" id="sampleNote">
+        Sample products are visible until the first real product is added from admin.
+      </section>
+
+      <section class="product-grid" id="productGrid" aria-live="polite"></section>
+
+      <section class="community-reviews" aria-labelledby="communityReviewsTitle">
+        <div class="community-left-panel">
+          <p class="eyebrow">Community Hub</p>
+          <h2 class="section-title" id="communityReviewsTitle">Discussion Board</h2>
+          <p class="subtext">Connect with other builders, share your project experience, ask questions, or report component issues.</p>
+          <div class="community-categories" id="communityCategories" aria-label="Categories">
+            <button type="button" class="category-tab active" data-category="All">All Topics</button>
+            <button type="button" class="category-tab" data-category="Problem">⚠️ Problems</button>
+            <button type="button" class="category-tab" data-category="Experience">💬 Experiences</button>
+            <button type="button" class="category-tab" data-category="Project">💡 Projects</button>
+            <button type="button" class="category-tab" data-category="General">🌐 General</button>
+          </div>
+          <button class="primary-btn start-post-btn" id="startPostBtn" type="button">Start a Discussion</button>
+        </div>
+
+        <div class="community-main-panel">
+          <!-- Form to post (hidden by default, toggled via startPostBtn) -->
+          <div class="post-form-card hidden" id="postFormCard">
+            <header class="post-form-header">
+              <h3>Start a new discussion</h3>
+              <button class="icon-btn close-form-btn" id="closePostFormBtn" type="button">&times;</button>
+            </header>
+            <form class="community-post-form" id="communityPostForm">
+              <div class="two-col">
+                <label>Your Name<input name="name" id="postAuthorName" placeholder="Enter your name" required></label>
+                <label>Category
+                  <select name="category" required>
+                    <option value="General">General Discussion</option>
+                    <option value="Problem">⚠️ Problem / Issue</option>
+                    <option value="Experience">💬 Shopping Experience</option>
+                    <option value="Project">💡 Project Share</option>
+                  </select>
+                </label>
+              </div>
+              <label>Discussion Title<input name="title" required placeholder="What's on your mind?"></label>
+              <label>Content / Details<textarea name="content" rows="4" required placeholder="Share your experience, ask a question, or describe a component issue..."></textarea></label>
+              <div class="form-actions">
+                <p class="form-help login-notice" id="postLoginNotice">You are posting as a guest. <button type="button" class="text-link-btn" id="postFormLoginBtn">Log in</button> to post as a verified member.</p>
+                <button class="primary-btn" type="submit" id="submitPostBtn">Post to Board</button>
+              </div>
+            </form>
+          </div>
+          
+          <div class="community-posts-list" id="communityPostsList">
+            <!-- Dynamic posts go here -->
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <h2>Get to know us</h2>
+        <a href="/">About MicrochipCart</a>
+        <p class="footer-desc">Microchip Cart is a premier B2B and B2C electronic components marketplace. We bridge the gap between engineers, hobbyists, and wholesale distributors by providing authentic, high-performance microchips, wireless modules, and embedded hardware with transparent technical specifications and streamlined distributor procurement workflows.</p>
+      </div>
+      <div>
+        <h2>Connect with us</h2>
+        <p>Email ID - microchipcaty025@gmail.com</p>
+        <p>Phone number - 9175536112</p>
+        <p>Address - Sr No 222/1 bldg No 8 1st, to 5th Raheja Woods, Yerwada, Pune City, Pune - 411006, Maharashtra</p>
+      </div>
+      <div>
+        <h2>Let us help you</h2>
+        <button type="button" data-help-topic="returns">Returns</button>
+        <button type="button" data-help-topic="account">Your account</button>
+        <button type="button" data-help-topic="help">Help</button>
+      </div>
+    </footer>
+
+    <aside class="cart-drawer" id="cartDrawer" aria-hidden="true">
+      <div class="drawer-head">
+        <div>
+          <p class="eyebrow">Cart</p>
+          <h2>Your components</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close-cart aria-label="Close cart">&times;</button>
+      </div>
+      <div class="cart-items" id="cartItems"></div>
+      <div class="cart-summary">
+        <div><span>Subtotal</span><strong id="cartSubtotal">INR 0</strong></div>
+        <div><span>GST 18%</span><strong id="cartTax">INR 0</strong></div>
+        <div><span>Shipping</span><strong id="cartShipping">INR 0</strong></div>
+        <div class="total"><span>Total</span><strong id="cartTotal">INR 0</strong></div>
+        <button class="primary-btn" id="checkoutBtn" type="button">Place order</button>
+      </div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+
+    <dialog class="modal" id="authModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <div class="auth-mode-switch" aria-label="Account login type">
+        <button type="button" class="active" data-auth-mode="B2C">Customer</button>
+        <button type="button" data-auth-mode="B2B">Business</button>
+      </div>
+      <div class="auth-tabs" role="tablist">
+        <button type="button" data-auth-tab="login" class="active">Login</button>
+        <button type="button" data-auth-tab="signup">Signup</button>
+      </div>
+      <form class="auth-panel active" id="loginForm" data-auth-panel="login">
+        <h2><span data-auth-title>Customer</span> login</h2>
+        <p class="form-help" data-auth-help>Use your customer account to track orders and checkout faster.</p>
+        <input name="account_type" type="hidden" value="B2C">
+        <label>Email<input name="email" type="email" required></label>
+        <label>Password<input name="password" type="password" required></label>
+        <button class="primary-btn" type="submit">Login</button>
+      </form>
+      <form class="auth-panel" id="signupForm" data-auth-panel="signup">
+        <h2>Create <span data-auth-title>customer</span> account</h2>
+        <p class="form-help" data-auth-help>Customer accounts are for individual purchases and quick reorders.</p>
+        <input name="account_type" type="hidden" value="B2C">
+        <label>Name<input name="name" required></label>
+        <label>Email<input name="email" type="email" required></label>
+        <label>Phone<input name="phone" inputmode="tel"></label>
+        <div class="business-fields">
+          <label>Company name<input name="company_name" autocomplete="organization"></label>
+          <label>GSTIN<input name="gstin" maxlength="15" placeholder="15-char e.g., 22AAAAA0000A1Z5"></label>
+          <label>Business address<input name="business_address" placeholder="Registered business address"></label>
+        </div>
+        <label>Password<input name="password" type="password" minlength="6" required></label>
+        <button class="primary-btn" type="submit">Create account</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal product-modal" id="productModal"></dialog>
+
+    <dialog class="modal" id="wishlistModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <h2>Your wishlist</h2>
+      <div class="wishlist-list" id="wishlistList"></div>
+    </dialog>
+
+    <dialog class="modal" id="checkoutModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <form id="checkoutForm" class="checkout-form">
+        <h2>Order details</h2>
+        <div class="two-col">
+          <label>Name<input name="name" required></label>
+          <label>Email<input name="email" type="email" required></label>
+        </div>
+        <div class="two-col">
+          <label>Phone<input name="phone" inputmode="tel"></label>
+          <label>Pincode<input name="pincode" inputmode="numeric"></label>
+        </div>
+        <fieldset class="account-options">
+          <legend>Order type</legend>
+          <label><input type="radio" name="order_type" value="B2C" checked> Individual</label>
+          <label><input type="radio" name="order_type" value="B2B"> Business / distributor</label>
+        </fieldset>
+        <div class="business-fields">
+          <label>Company name<input name="company_name" autocomplete="organization"></label>
+          <label>GSTIN<input name="gstin" maxlength="15" placeholder="Optional"></label>
+        </div>
+        <label>Address<input name="line1" required></label>
+        <div class="two-col">
+          <label>City<input name="city"></label>
+          <label>State<input name="state"></label>
+        </div>
+        <fieldset class="payment-options">
+          <legend>Payment option</legend>
+          <label><input type="radio" name="payment_method" value="COD" checked> Cash on delivery</label>
+          <label><input type="radio" name="payment_method" value="UPI"> UPI</label>
+          <label><input type="radio" name="payment_method" value="Card"> Card</label>
+        </fieldset>
+        <button class="primary-btn" type="submit">Place order</button>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="ordersModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <h2>Your orders</h2>
+      <div class="orders-list" id="ordersList"></div>
+    </dialog>
+
+    <dialog class="modal" id="helpModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <div class="help-content" id="helpContent"></div>
+    </dialog>
+
+    <dialog class="modal settings-modal" id="settingsModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <h2>Account settings</h2>
+      <div class="settings-shell">
+        <div class="settings-tabs" role="tablist" aria-label="Account settings sections">
+          <button type="button" class="active" data-settings-tab="profile">Profile</button>
+          <button type="button" data-settings-tab="password">Password</button>
+          <button type="button" data-settings-tab="privacy">Privacy</button>
+          <button type="button" data-settings-tab="theme">Theme</button>
+          <button type="button" data-settings-tab="danger">Account</button>
+        </div>
+
+        <form class="settings-panel active" id="profileSettingsForm" data-settings-panel="profile">
+          <div class="two-col">
+            <label>Name<input name="name" required></label>
+            <label>Email<input name="email" type="email" required></label>
+          </div>
+          <div class="two-col">
+            <label>Phone<input name="phone" inputmode="tel"></label>
+            <label>Account type<input name="account_type" disabled></label>
+          </div>
+          <div class="business-fields" id="settingsBusinessFields">
+            <label>Company name<input name="company_name" autocomplete="organization"></label>
+            <label>GSTIN<input name="gstin" maxlength="15"></label>
+          </div>
+          <button class="primary-btn" type="submit">Save profile</button>
+        </form>
+
+        <form class="settings-panel" id="passwordSettingsForm" data-settings-panel="password">
+          <label>Current password<input name="current_password" type="password" required></label>
+          <label>New password<input name="new_password" type="password" minlength="6" required></label>
+          <label>Confirm new password<input name="confirm_password" type="password" minlength="6" required></label>
+          <button class="primary-btn" type="submit">Change password</button>
+        </form>
+
+        <div class="settings-panel privacy-panel" data-settings-panel="privacy">
+          <section>
+            <h3>Privacy policy</h3>
+            <p>Microchip Cart uses your account, contact, address, order, and payment-method preference details to process orders, provide support, prepare invoices, prevent misuse, and improve the shopping experience.</p>
+            <p>We do not sell personal data. Order and account information may be shared only with payment, delivery, compliance, or support partners when required to complete your purchase or meet legal obligations.</p>
+          </section>
+          <section>
+            <h3>Terms and conditions</h3>
+            <p>Prices, stock, product specifications, taxes, and delivery estimates can change before checkout. Orders may be reviewed, approved, rejected, or cancelled if details are incorrect, stock is unavailable, payment fails, or misuse is detected.</p>
+            <p>Returns, warranty claims, refunds, and replacements depend on product condition, invoice details, supplier policy, and applicable law. Customers must provide accurate account, GST, shipping, and contact information.</p>
+          </section>
+          <section>
+            <h3>Purchase protection</h3>
+            <p>Keep invoices, packaging, and product labels for return or support requests. Contact support quickly if an item is damaged, incorrect, missing, or not as described.</p>
+          </section>
+        </div>
+
+        <div class="settings-panel" data-settings-panel="theme">
+          <label>Store theme
+            <select id="settingsThemeSelect">
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <p class="form-help">Theme preference is saved on this device.</p>
+        </div>
+
+        <div class="settings-panel danger-panel" data-settings-panel="danger">
+          <button class="secondary-btn" id="settingsLogoutBtn" type="button">Log out</button>
+          <form id="deleteAccountForm">
+            <h3>Delete account</h3>
+            <p class="form-help">This permanently removes your login account from this store. Existing orders may remain for invoices, support, and compliance records.</p>
+            <label>Password<input name="password" type="password" required></label>
+            <label>Type DELETE<input name="confirm" required></label>
+            <button class="danger-btn" type="submit">Delete account</button>
+          </form>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <section class="chatbot-widget" id="chatbotWidget" aria-label="Microchip assistant">
+      <button class="chatbot-launcher" id="chatbotLauncher" type="button" aria-expanded="false">
+        <span>🤖</span>
+        <strong>Microman</strong>
+      </button>
+      <div class="chatbot-panel hidden" id="chatbotPanel">
+        <header>
+          <div>
+            <p class="eyebrow">Microchip assistant</p>
+            <h2 class="chatbot-title">Microman <span class="status-dot"></span></h2>
+          </div>
+          <button class="icon-btn" id="chatbotClose" type="button" aria-label="Close assistant">&times;</button>
+        </header>
+        <div class="chatbot-messages" id="chatbotMessages" aria-live="polite"></div>
+        <div class="chatbot-suggestions" aria-label="Suggested questions">
+          <button type="button" data-chat-prompt="Which microcontroller should I buy for IoT?">IoT MCU? 🌐</button>
+          <button type="button" data-chat-prompt="Compare ESP32 and ATmega328P">Compare parts ⚖️</button>
+          <button type="button" data-chat-prompt="What products are available on this website?">Site products 📦</button>
+        </div>
+        <form class="chatbot-form" id="chatbotForm">
+          <input id="chatbotInput" name="message" autocomplete="off" placeholder="Ask about ESP32, STM32, ATmega, sensors...">
+          <button class="primary-btn" type="submit">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <script src="{{ url_for('static', filename='js/storefront.js') }}?v=single-account-menu-help-footer"></script>
+  </body>
+</html>

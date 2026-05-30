@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Login | Microchip Cart</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=business-dark-cyan">
+  </head>
+  <body class="admin-login-page">
+    <main class="login-shell">
+      <section class="login-card">
+        <div class="brand-lockup">
+          <span class="brand-mark">MC</span>
+          <div>
+            <h1>Microchip Cart</h1>
+            <p>Admin control center</p>
+          </div>
+        </div>
+        <form id="adminLoginForm">
+          <label>Email<input name="email" type="email" value="{{ admin_email }}" required></label>
+          <label>Password<input name="password" type="password" required autofocus></label>
+          <button type="submit">Login</button>
+        </form>
+        <p class="hint">Default local login: {{ admin_email }} / Admin@12345</p>
+      </section>
+    </main>
+    <div class="toast" id="toast"></div>
+    <script>
+      const form = document.querySelector("#adminLoginForm");
+      const toast = document.querySelector("#toast");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const body = Object.fromEntries(new FormData(form).entries());
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          location.href = "/admin";
+        } else {
+          toast.textContent = data.error || "Login failed";
+          toast.classList.add("show");
+          setTimeout(() => toast.classList.remove("show"), 2600);
+        }
+      });
+    </script>
+  </body>
+</html>

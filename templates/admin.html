@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Business Panel | Microchip Cart</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=business-dark-cyan">
+  </head>
+  <body>
+    <div class="admin-shell">
+      <aside class="sidebar">
+        <a class="brand-lockup" href="/admin">
+          <span class="brand-mark">MC</span>
+          <div>
+            <strong>Microchip Cart</strong>
+            <small>{{ store_mode }}</small>
+          </div>
+        </a>
+        <nav class="side-nav" aria-label="Admin navigation">
+          <button class="active" type="button" data-panel="dashboard">Dashboard</button>
+          <button type="button" data-panel="products">Products</button>
+          <button type="button" data-panel="orders">Orders</button>
+          <button type="button" data-panel="businesses">Businesses</button>
+          <button type="button" data-panel="users">Dispatch</button>
+          <button type="button" data-panel="analytics">Analysis</button>
+          <button type="button" data-panel="settings">Settings</button>
+        </nav>
+        <div class="side-footer">
+          <button class="ghost-btn" id="themeToggle" type="button">Theme</button>
+          <button class="ghost-btn" id="logoutBtn" type="button">Logout</button>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+        <header class="admin-topbar">
+          <div>
+            <p class="eyebrow">Control center</p>
+            <h1 id="panelTitle">Dashboard</h1>
+          </div>
+          <div class="admin-meta">
+            <span>{{ admin_email }}</span>
+            <a href="/owner">Owner admin</a>
+            <a href="/" target="_blank" rel="noreferrer">Open store</a>
+          </div>
+        </header>
+
+        <section class="panel active" id="dashboardPanel">
+          <div class="stat-grid" id="summaryCards"></div>
+          <div class="split-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Pending approvals</h2>
+                <button type="button" data-panel-jump="orders">View all</button>
+              </div>
+              <div id="pendingOrdersMini" class="stack-list"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Product performance</h2>
+                <button type="button" data-panel-jump="analytics">Analyze</button>
+              </div>
+              <div id="topProductsMini" class="stack-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="productsPanel">
+          <div class="product-admin-layout">
+            <article class="card">
+              <div class="card-head">
+                <h2>Add product</h2>
+                <span id="nextPathBadge">static/uploads/products/0.webp</span>
+              </div>
+              <form id="productForm" class="dense-form">
+                <label>Product name<input name="name" required></label>
+                <label>Description<textarea name="description" rows="3" required></textarea></label>
+                <div class="two-col">
+                  <label>Category<input name="category" value="Microcontroller"></label>
+                  <label>Brand<input name="brand"></label>
+                </div>
+                <div class="two-col">
+                  <label>Model<input name="model"></label>
+                  <label>SKU<input name="sku"></label>
+                </div>
+                <div class="two-col">
+                  <label>Price<input name="price" type="number" min="0" step="0.01" required></label>
+                  <label>Stock<input name="stock" type="number" min="0" step="1" required></label>
+                </div>
+                <label>Specs<textarea name="specs" rows="5" placeholder="Core: ARM Cortex-M4&#10;Clock: 168 MHz&#10;Voltage: 3.3V"></textarea></label>
+                <div class="two-col">
+                  <label>Datasheet URL<input name="datasheet_url" type="url"></label>
+                  <label>Lead time<input name="lead_time" value="Ready to dispatch"></label>
+                </div>
+                <label>Warranty<input name="warranty" value="7 days replacement"></label>
+                <label>Upload WebP image<input name="image" type="file" accept="image/webp"></label>
+                <label class="check-row"><input name="use_suggested_image" type="checkbox" value="true"> Use suggested image path</label>
+                <input type="hidden" name="image_url" id="imageUrlField">
+                <button type="submit">Add product</button>
+              </form>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Inventory</h2>
+                <div class="admin-toolbar">
+                  <input class="admin-search" id="inventorySearch" placeholder="Search inventory...">
+                  <button type="button" id="refreshProductsBtn">Refresh</button>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>SKU</th>
+                      <th>Price</th>
+                      <th>Stock</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="productsTable"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="ordersPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Orders</h2>
+              <select id="orderFilter">
+                <option value="all">All orders</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div id="ordersTable" class="order-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="businessesPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Business Approvals</h2>
+              <select id="businessFilter">
+                <option value="all">All businesses</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+            <div id="businessesTable" class="order-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="usersPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Dispatch tracker</h2>
+              <span id="userCountBadge">0 shipments</span>
+            </div>
+            <div id="usersTable" class="order-list"></div>
+          </article>
+        </section>
+
+        <section class="panel" id="analyticsPanel">
+          <div class="split-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Sales analysis</h2>
+                <span id="topProductBadge">No sales yet</span>
+              </div>
+              <div id="analyticsBars" class="analytics-bars"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Interest signals</h2>
+                <span>Views, cart adds, reviews</span>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Views</th>
+                      <th>Cart</th>
+                      <th>Sold</th>
+                      <th>Conv.</th>
+                      <th>Score</th>
+                    </tr>
+                  </thead>
+                  <tbody id="analyticsTable"></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel" id="settingsPanel">
+          <article class="card narrow-card">
+            <div class="card-head">
+              <h2>Store settings</h2>
+              <span>Public homepage</span>
+            </div>
+            <form id="settingsForm" class="dense-form">
+              <label>Store name<input name="store_name" required></label>
+              <label>Support email<input name="support_email" type="email" required></label>
+              <label>Announcement<textarea name="announcement" rows="3"></textarea></label>
+              <button type="submit">Save settings</button>
+            </form>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="editProductModal">
+      <form method="dialog" class="modal-close-row">
+        <button aria-label="Close">&times;</button>
+      </form>
+      <form id="editProductForm" class="dense-form">
+        <h2>Edit product</h2>
+        <input type="hidden" name="id">
+        <label>Name<input name="name" required></label>
+        <label>Description<textarea name="description" rows="3" required></textarea></label>
+        <div class="two-col">
+          <label>Price<input name="price" type="number" step="0.01" min="0"></label>
+          <label>Stock<input name="stock" type="number" step="1" min="0"></label>
+        </div>
+        <div class="two-col">
+          <label>Category<input name="category"></label>
+          <label>SKU<input name="sku"></label>
+        </div>
+        <div class="two-col">
+          <label>Brand<input name="brand"></label>
+          <label>Model<input name="model"></label>
+        </div>
+        <div class="two-col">
+          <label>Datasheet URL<input name="datasheet_url" type="url"></label>
+          <label>Lead time<input name="lead_time"></label>
+        </div>
+        <label>Warranty<input name="warranty"></label>
+        <label>Image URL<input name="image_url"></label>
+        <label>Specs<textarea name="specs" rows="5"></textarea></label>
+        <label class="check-row"><input name="active" type="checkbox"> Active</label>
+        <button type="submit">Save product</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast"></div>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=business-dispatch-theme"></script>
+  </body>
+</html>
