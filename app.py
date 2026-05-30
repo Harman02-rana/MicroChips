@@ -22,14 +22,39 @@ except Exception:
     pass
 
 # ── Supabase Client ───────────────────────────────────────────────────────────
-from supabase import create_client, Client
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_KEY")
-supabase: Client | None = None
-if supabase_url and supabase_key:
-    supabase = create_client(supabase_url, supabase_key)
+try:
+    from supabase import create_client
+except Exception as exc:
+    create_client = None
+    print(f"Supabase package unavailable: {exc}")
 
+SUPABASE_PLACEHOLDERS = {
+    "",
+    "https://your-project-ref.supabase.co",
+    "your-anon-key",
+    "your-service-role-key",
+}
 
+supabase_url = (os.getenv("SUPABASE_URL") or "").strip()
+supabase_key = (
+    os.getenv("SUPABASE_KEY")
+    or os.getenv("SUPABASE_ANON_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or ""
+).strip()
+
+# Clear proxy settings that commonly break local Supabase/httpx initialization.
+os.environ.pop("HTTP_PROXY", None)
+os.environ.pop("HTTPS_PROXY", None)
+
+supabase = None
+if create_client and supabase_url not in SUPABASE_PLACEHOLDERS and supabase_key not in SUPABASE_PLACEHOLDERS:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+        print("Supabase auth connected")
+    except Exception as e:
+        print("Supabase auth disabled:", e)
+        supabase = None
 # ── SQLAlchemy / PostgreSQL ───────────────────────────────────────────────────
 from sqlalchemy import (
     create_engine, text,
@@ -406,6 +431,47 @@ def normalize_email(email):
 def normalize_account_type(value):
     return "B2B" if str(value or "").upper() == "B2B" else "B2C"
 
+def supabase_user_metadata(auth_user):
+    if not auth_user:
+        return {}
+    metadata = getattr(auth_user, "user_metadata", None) or getattr(auth_user, "raw_user_meta_data", None) or {}
+    return metadata if isinstance(metadata, dict) else {}
+
+def supabase_account_type(auth_user, fallback="B2C"):
+    metadata = supabase_user_metadata(auth_user)
+    return normalize_account_type(metadata.get("account_type") or metadata.get("role") or fallback)
+
+def session_login_for(user):
+    session["user_id"] = str_id(user.id)
+    if (user.account_type or "B2C") == "B2B":
+        session["admin_logged_in"] = True
+    else:
+        session.pop("admin_logged_in", None)
+
+def supabase_auth_signup(email, password, name, account_type):
+    if not supabase:
+        return None, None
+    try:
+        response = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {"data": {"name": name, "account_type": account_type}},
+        })
+        return getattr(response, "user", None), None
+    except Exception as exc:
+        print(f"Supabase signup skipped: {exc}")
+        return None, exc
+
+def supabase_auth_login(email, password):
+    if not supabase:
+        return None, None
+    try:
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        return getattr(response, "user", None), None
+    except Exception as exc:
+        print(f"Supabase login failed, falling back to local profile auth: {exc}")
+        return None, exc
+
 def client_ip():
     forwarded = request.headers.get("X-Forwarded-For", "")
     return (forwarded.split(",", 1)[0] or request.remote_addr or "unknown").strip()
@@ -470,7 +536,11 @@ def public_user(u):
     }
 
 def auth_redirect_url(user):
-    return url_for("admin_page") if (user.account_type or "B2C") == "B2B" else "/"
+    if isinstance(user, dict):
+        account_type = user.get("account_type") or "B2C"
+    else:
+        account_type = getattr(user, "account_type", None) or "B2C"
+    return url_for("admin_page") if account_type == "B2B" else "/"
 
 def product_to_dict(p: ProductModel) -> dict:
     count = p.rating_count or 0
@@ -566,6 +636,11 @@ def current_user():
     db = DBSession()
     try:
         return db.query(UserModel).filter_by(id=user_id).first()
+    except SQLAlchemyError as exc:
+        print(f"Could not load session user: {exc}")
+        session.pop("user_id", None)
+        session.pop("admin_logged_in", None)
+        return None
     finally:
         db.close()
 
@@ -942,7 +1017,7 @@ def ensure_bootstrap_data():
             db.add(SettingsModel(key="store", value={
                 "store_name":   "Microchip Cart",
                 "support_email": ADMIN_NOTIFICATION_EMAIL,
-                "announcement": "Precision components, clear specs, fast order approval.",
+                "announcement": "Cyber-blue component deals for engineers, labs, and hardware teams.",
                 "currency":     "INR",
                 "created_at":   now_iso(),
             }))
@@ -1123,17 +1198,8 @@ def api_signup_compat():
     if account_type == "B2B":
         if not company_name:
             return api_error("Business Name is required for business accounts.")
-        if not phone:
-            return api_error("Contact Number is required for business accounts.")
-        if not business_address:
-            return api_error("Business Address is required for business accounts.")
-        if not gstin or not re.match(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$", gstin):
+        if gstin and not re.match(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$", gstin):
             return api_error("Invalid GST format. Please enter a valid 15-character GSTIN.")
-        
-        otp = (data.get("otp") or "").strip()
-        if not otp or phone_otps.get(phone) != otp:
-            return api_error("Invalid or missing phone OTP.")
-        phone_otps.pop(phone, None)
 
     db = DBSession()
     try:
@@ -1142,22 +1208,10 @@ def api_signup_compat():
         if phone and db.query(UserModel).filter_by(phone=phone).first():
             return api_error("This phone number is already registered.")
 
-        user_id = None
-        if supabase:
-            # Use Supabase Auth
-            auth_response = supabase.auth.sign_up({
-                "email": email,
-                "password": password,
-                "options": {
-                    "data": {
-                        "name": name,
-                        "account_type": account_type
-                    }
-                }
-            })
-            if not auth_response.user:
-                return api_error("Failed to sign up with Supabase.")
-            user_id = auth_response.user.id
+        auth_user, auth_error = supabase_auth_signup(email, password, name, account_type)
+        if supabase and auth_error and "already" not in str(auth_error).lower():
+            return api_error("Supabase auth is unavailable. Please try again shortly.", 503)
+        user_id = getattr(auth_user, "id", None)
 
         user = UserModel(
             id             = user_id if user_id else uuid.uuid4(),
@@ -1177,19 +1231,15 @@ def api_signup_compat():
             business = BusinessProfileModel(
                 id               = user.id,
                 business_name    = company_name,
-                business_address = business_address,
-                contact_number   = phone,
-                gst_number       = gstin,
-                approval_status  = "Pending"
+                business_address = business_address or "",
+                contact_number   = phone or "",
+                gst_number       = gstin or "",
+                approval_status  = "Approved"
             )
             db.add(business)
         db.commit()
         db.refresh(user)
-        session["user_id"] = str_id(user.id)
-        if (user.account_type or "B2C") == "B2B":
-            session["admin_logged_in"] = True
-        else:
-            session.pop("admin_logged_in", None)
+        session_login_for(user)
         return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)}, 201)
     except Exception as e:
         db.rollback()
@@ -1204,47 +1254,54 @@ def api_login_direct():
     data     = request.get_json(silent=True) or {}
     email    = normalize_email(data.get("email"))
     password = data.get("password") or ""
-    account_type = normalize_account_type(data.get("account_type"))
+    requested_type = data.get("account_type")
     db = DBSession()
     try:
-        if supabase:
-            try:
-                auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                if not auth_response.user:
-                    return api_error("Invalid email or password.", 401)
-            except Exception:
-                return api_error("Invalid email or password.", 401)
-
+        auth_user, _auth_error = supabase_auth_login(email, password)
         user = db.query(UserModel).filter_by(email=email).first()
         if not user:
-            return api_error("Invalid email or password.", 401)
+            if not auth_user:
+                return api_error("Invalid email or password.", 401)
+            account_type = supabase_account_type(auth_user, requested_type or "B2C")
+            metadata = supabase_user_metadata(auth_user)
+            user = UserModel(
+                id=getattr(auth_user, "id", None) or uuid.uuid4(),
+                email=email,
+                password_hash=generate_password_hash(password),
+                name=metadata.get("name") or email.split("@", 1)[0],
+                account_type=account_type,
+                email_verified=bool(getattr(auth_user, "email_confirmed_at", None)),
+                status="Active",
+            )
+            db.add(user)
+            db.flush()
             
-        if not supabase and not check_password_hash(user.password_hash, password):
+        if not auth_user and not check_password_hash(user.password_hash or "", password):
             return api_error("Invalid email or password.", 401)
 
-        if (user.account_type or "B2C") != account_type:
-            return api_error(f"This email is registered as {(user.account_type or 'B2C')}. Switch portal and try again.", 401)
+        if not user.account_type:
+            user.account_type = supabase_account_type(auth_user, requested_type or "B2C")
         
-        if account_type == "B2B":
-            business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
-            if business and business.approval_status != "Approved":
-                return api_error("Your business account is pending approval.", 403)
-
         user.last_login = now_utc()
         db.commit()
         db.refresh(user)
-        session["user_id"] = str_id(user.id)
-        if (user.account_type or "B2C") == "B2B":
-            session["admin_logged_in"] = True
-        else:
-            session.pop("admin_logged_in", None)
+        session_login_for(user)
         return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)})
+    except Exception as exc:
+        db.rollback()
+        print(f"Login failed unexpectedly: {exc}")
+        return api_error("Login is temporarily unavailable. Please try again.", 503)
     finally:
         db.close()
 
 
 @app.post("/api/auth/logout")
 def api_logout():
+    if supabase:
+        try:
+            supabase.auth.sign_out()
+        except Exception as exc:
+            print(f"Supabase logout skipped: {exc}")
     session.pop("user_id", None)
     session.pop("admin_logged_in", None)
     return api_ok()
@@ -1993,9 +2050,4 @@ def not_found(_):
 
 
 if __name__ == "__main__":
-    app.run(
-        debug  = os.getenv("APP_ENV") != "production",
-        host   = "127.0.0.1",
-        port   = int(os.getenv("PORT", "5000")),
-        use_reloader=False,
-    )
+    app.run(host="0.0.0.0", port=5000, debug=True)

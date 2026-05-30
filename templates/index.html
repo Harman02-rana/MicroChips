@@ -5,90 +5,327 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ settings.store_name or "Microchip Cart" }}</title>
     <meta name="description" content="Microchip Cart is a B2B and B2C ecommerce storefront for verified electronic components, order approvals, invoices, and distributor-ready workflows.">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=video-dark-cyan-theme">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=cyber-blue-marketplace">
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
   </head>
   <body data-page="{{ page_mode or 'home' }}">
-    <header class="site-header">
-      <a class="brand" href="/" aria-label="Microchip Cart home">
-        <span class="brand-mark">MC</span>
-        <span>
-          <strong id="storeName">{{ settings.store_name or "Microchip Cart" }}</strong>
-          <small>Embedded parts store</small>
-        </span>
-      </a>
-      <form class="search" id="searchForm">
-        <input id="searchInput" type="search" placeholder="Search MCU, module, SKU..." autocomplete="off">
-        <div class="search-suggestions hidden" id="searchSuggestions" role="listbox" aria-label="Search suggestions"></div>
-      </form>
-      <nav class="header-actions" aria-label="Main actions">
-        <button class="text-btn" id="ordersBtn" type="button">Orders</button>
-        <button class="cart-btn" id="cartBtn" type="button" aria-label="Open cart">
-          <span aria-hidden="true">&#128722;</span>
-          <strong id="cartCount">0</strong>
+    <header class="site-header amazon-header">
+      <div class="header-main-row">
+        <!-- Mobile Hamburger Menu Button -->
+        <button class="mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Open navigation menu">
+          <i data-lucide="menu"></i>
         </button>
-        <button class="wishlist-btn" id="wishlistBtn" type="button" aria-label="View wishlist">
-          <span aria-hidden="true">&#9825;</span>
-          <strong id="wishlistCount">0</strong>
-        </button>
-        <div class="account-menu" id="guestAccountMenu">
-          <button class="text-btn account-trigger" id="authBtn" type="button" aria-haspopup="true" aria-expanded="false">
-            Create account
-          </button>
-          <div class="account-dropdown" id="guestAccountDropdown" role="menu">
-            <button type="button" id="guestSignupBtn" role="menuitem"><span>Create an account</span><small>Shop faster and track orders</small></button>
-            <button type="button" id="guestLoginBtn" role="menuitem"><span>Login</span><small>Access orders and wishlist</small></button>
-            <button type="button" id="guestBusinessBtn" role="menuitem"><span>Switch to business account</span><small>GST invoices and business orders</small></button>
+
+        <!-- Brand Logo -->
+        <a class="brand" href="/" aria-label="Microchip Cart home">
+          <span class="chip-logo-icon" aria-hidden="true"></span>
+          <div class="brand-text">
+            <strong id="storeName"><span>MicroChip</span><span>Cart</span></strong>
+          </div>
+        </a>
+
+        <!-- Deliver To -->
+        <div class="header-location" id="locationBtn" role="button" tabindex="0" title="Select delivery location">
+          <i data-lucide="map-pin" class="location-pin-icon"></i>
+          <div class="location-text">
+            <span class="deliver-to">Deliver to</span>
+            <span class="location-name" id="currentLocationLabel">India</span>
           </div>
         </div>
-        <div class="profile-menu hidden" id="profileMenu">
-          <button class="profile-trigger" id="profileBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">
-            <span id="profileInitial">U</span>
-          </button>
-          <div class="profile-dropdown" id="profileDropdown" role="menu">
-            <div class="profile-summary">
-              <span id="profileDropdownInitial">U</span>
-              <div>
-                <strong id="profileName">User</strong>
-                <small id="profileEmail">Signed in</small>
+
+        <!-- Center Section: Smart Search Bar (Desktop) -->
+        <div class="header-search-container desktop-search">
+          <form class="search-bar-form" id="searchFormDesktop">
+            <div class="search-category-select-wrapper">
+              <select class="search-category-select" id="searchCategorySelectDesktop" aria-label="Search category">
+                <option value="All">All Categories</option>
+                <option value="Microchip">Microchip</option>
+                <option value="Wireless">Wireless</option>
+                <option value="Sensor">Sensors</option>
+                <option value="IC">ICs</option>
+              </select>
+            </div>
+            <input class="search-input-field" id="searchInput" type="search" placeholder="Search MCU, module, SKU, brand..." autocomplete="off">
+            <button class="search-submit-btn" type="submit" aria-label="Submit search">
+              <i data-lucide="search"></i>
+            </button>
+          </form>
+          <div class="search-suggestions-dropdown hidden" id="searchSuggestions" role="listbox"></div>
+        </div>
+
+        <!-- Right Nav Actions -->
+        <nav class="header-actions" aria-label="Main actions">
+          
+          <!-- Orders & Returns (Desktop Only) -->
+          <div class="header-nav-item dropdown-trigger desktop-only" id="ordersNavTrigger" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false">
+            <div class="nav-item-text">
+              <span class="nav-item-sub">Returns</span>
+              <span class="nav-item-main">& Orders <i data-lucide="chevron-down" class="nav-arrow"></i></span>
+            </div>
+            <div class="header-dropdown-menu orders-dropdown" role="menu">
+              <button type="button" class="dropdown-item" id="navOrdersCurrent">Current Orders</button>
+              <button type="button" class="dropdown-item" id="navOrdersHistory">Order History</button>
+              <button type="button" class="dropdown-item" id="navOrdersReturns">Returns</button>
+              <button type="button" class="dropdown-item" id="navOrdersRefunds">Refund Status</button>
+            </div>
+          </div>
+
+          <!-- Authentication Area -->
+          <!-- Guest Account Dropdown -->
+          <div class="header-nav-item dropdown-trigger" id="guestAccountMenu">
+            <button class="nav-item-btn account-trigger" id="authBtn" type="button" aria-haspopup="true" aria-expanded="false">
+              <div class="nav-item-text">
+                <span class="nav-item-sub">Hello, Sign In</span>
+                <span class="nav-item-main">Account & Lists <i data-lucide="chevron-down" class="nav-arrow"></i></span>
+              </div>
+            </button>
+            <div class="header-dropdown-menu auth-dropdown" id="guestAccountDropdown" role="menu">
+              <button type="button" id="guestLoginBtn" role="menuitem">
+                <span>Login</span>
+                <small>Access orders and wishlist</small>
+              </button>
+              <button type="button" id="guestSignupBtn" role="menuitem">
+                <span>Create an Account</span>
+                <small>Shop faster and track orders</small>
+              </button>
+              <button type="button" id="guestBusinessBtn" role="menuitem">
+                <span>Switch to Business Account</span>
+                <small>GST invoices and wholesale pricing</small>
+              </button>
+            </div>
+          </div>
+
+          <!-- User Menu (Hidden by default) -->
+          <div class="header-nav-item dropdown-trigger hidden" id="profileMenu">
+            <button class="nav-item-btn profile-trigger" id="profileBtn" type="button" aria-haspopup="true" aria-expanded="false">
+              <span class="profile-avatar-mini" id="profileInitial" aria-hidden="true">U</span>
+              <div class="nav-item-text">
+                <span class="nav-item-sub">Hello, <span id="profileNameLabel">User</span></span>
+                <span class="nav-item-main">Account & Lists <i data-lucide="chevron-down" class="nav-arrow"></i></span>
+              </div>
+            </button>
+            <div class="header-dropdown-menu auth-dropdown" id="profileDropdown" role="menu">
+              <div class="profile-summary">
+                <span id="profileDropdownInitial">U</span>
+                <div>
+                  <strong id="profileName">User</strong>
+                  <small id="profileEmail">Signed in</small>
+                  <span class="role-badge" id="profileRoleBadge">Customer</span>
+                </div>
+              </div>
+              <div class="profile-menu-grid">
+                <button type="button" id="profileSettingsBtn" role="menuitem"><span>Your Account</span><small>Profile & safety</small></button>
+                <button type="button" id="profileOrdersBtn" role="menuitem"><span>Orders</span><small>Track & view history</small></button>
+                <button type="button" id="profileThemeBtn" role="menuitem"><span>Theme</span><small>Cyber blue mode</small></button>
+                <button type="button" id="profileWishlistBtn" role="menuitem"><span>Wishlist</span><small>Saved products</small></button>
+                <button type="button" id="profileCartBtn" role="menuitem"><span>Cart</span><small>Review items</small></button>
+              </div>
+              <button class="profile-logout" type="button" id="profileLogoutBtn" role="menuitem">Logout</button>
+            </div>
+          </div>
+
+          <!-- Wishlist Dropdown -->
+          <div class="header-nav-item dropdown-trigger" id="wishlistNavTrigger">
+            <button class="nav-item-btn wishlist-btn-trigger" id="wishlistBtn" type="button" aria-label="View wishlist">
+              <div class="badge-icon-wrapper">
+                <i data-lucide="heart" class="wishlist-icon-symbol"></i>
+                <strong class="badge-count" id="wishlistCount">0</strong>
+              </div>
+              <span class="nav-item-label desktop-only">Wishlist</span>
+            </button>
+            <div class="header-dropdown-menu preview-dropdown" id="wishlistDropdownMenu">
+              <div class="dropdown-preview-header">Wishlist Preview</div>
+              <div class="dropdown-preview-items" id="wishlistDropdownItems">
+                <p class="preview-empty">Your wishlist is empty.</p>
+              </div>
+              <button class="secondary-btn view-all-btn" id="wishlistDropdownViewAll" type="button">View All Wishlist</button>
+            </div>
+          </div>
+
+          <!-- Cart Dropdown -->
+          <div class="header-nav-item dropdown-trigger" id="cartNavTrigger">
+            <button class="nav-item-btn cart-btn-trigger" id="cartBtn" type="button" aria-label="Open cart">
+              <div class="badge-icon-wrapper">
+                <i data-lucide="shopping-cart" class="cart-icon-symbol"></i>
+                <strong class="badge-count" id="cartCount">0</strong>
+              </div>
+              <span class="nav-item-label desktop-only">Cart</span>
+            </button>
+            <div class="header-dropdown-menu preview-dropdown" id="cartDropdownMenu">
+              <div class="dropdown-preview-header">Shopping Cart Preview</div>
+              <div class="dropdown-preview-items" id="cartDropdownItems">
+                <p class="preview-empty">Your cart is empty.</p>
+              </div>
+              <div class="dropdown-preview-footer">
+                <div class="preview-total-row">
+                  <span>Subtotal:</span>
+                  <strong id="miniCartSubtotal">INR 0</strong>
+                </div>
+                <div class="preview-btn-row">
+                  <button class="secondary-btn" id="miniCartViewBtn" type="button">View Cart</button>
+                  <button class="primary-btn" id="miniCartCheckoutBtn" type="button">Checkout</button>
+                </div>
               </div>
             </div>
-            <div class="profile-menu-grid">
-              <button type="button" id="profileOrdersBtn" role="menuitem"><span>Orders</span><small>Track purchases</small></button>
-              <button type="button" id="profileCartBtn" role="menuitem"><span>Cart</span><small>Review items</small></button>
-              <button type="button" id="profileWishlistBtn" role="menuitem"><span>Wishlist</span><small>Saved products</small></button>
-              <button type="button" id="profileSettingsBtn" role="menuitem"><span>Settings</span><small>Profile, privacy, theme</small></button>
+          </div>
+
+          <!-- Theme Toggle -->
+          <button class="icon-btn theme-toggle-btn" id="themeToggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+            <i data-lucide="sun" class="theme-icon-sun"></i>
+            <i data-lucide="moon" class="theme-icon-moon hidden"></i>
+          </button>
+
+        </nav>
+      </div>
+
+      <!-- Mobile Search Bar -->
+      <div class="header-search-container mobile-search">
+        <form class="search-bar-form" id="searchFormMobile">
+          <input class="search-input-field" id="searchInputMobile" type="search" placeholder="Search MCU, module, SKU, brand..." autocomplete="off">
+          <button class="search-submit-btn" type="submit" aria-label="Submit search">
+            <i data-lucide="search"></i>
+          </button>
+        </form>
+        <div class="search-suggestions-dropdown hidden" id="searchSuggestionsMobile" role="listbox"></div>
+      </div>
+
+      <!-- Mobile Sidebar Menu -->
+      <div class="mobile-sidebar" id="mobileSidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-user-info" id="sidebarUserInfo">
+            <i data-lucide="user" class="sidebar-user-icon"></i>
+            <strong id="sidebarUserLabel">Hello, Sign In</strong>
+          </div>
+          <button class="sidebar-close-btn" id="sidebarCloseBtn" type="button" aria-label="Close menu">&times;</button>
+        </div>
+        <div class="sidebar-content">
+          <div class="sidebar-section">
+            <h3>Categories</h3>
+            <div class="sidebar-links-list" id="sidebarCategoryList">
+              <!-- Render categories list -->
             </div>
-            <button class="profile-logout" type="button" id="profileLogoutBtn" role="menuitem">Logout</button>
+          </div>
+          <div class="sidebar-section">
+            <h3>Orders & Returns</h3>
+            <button type="button" class="sidebar-link" id="sidebarOrdersCurrent">Current Orders</button>
+            <button type="button" class="sidebar-link" id="sidebarOrdersHistory">Order History</button>
+            <button type="button" class="sidebar-link" id="sidebarOrdersReturns">Returns</button>
+            <button type="button" class="sidebar-link" id="sidebarOrdersRefunds">Refund Status</button>
+          </div>
+          <div class="sidebar-section" id="sidebarUserActions">
+            <!-- Login/Logout actions will be generated by JS -->
           </div>
         </div>
-        <button class="icon-btn" id="themeToggle" type="button" title="Toggle theme" aria-label="Toggle theme">
-          <span data-icon="sun" aria-hidden="true">&#9728;</span>
-        </button>
-      </nav>
+      </div>
+      <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
     </header>
 
     <main>
-      <section class="shop-hero">
-        <div>
-          <p class="eyebrow">B2B/B2C component marketplace</p>
-          {% if page_mode == "products" %}
-          <h1>Products ready for direct buyers and business purchase teams.</h1>
-          <p id="announcement">Search verified components, compare specs, and place approval-ready orders.</p>
-          {% else %}
-          <h1>Verified microchips, transparent specs, and approval-ready orders.</h1>
-          <p id="announcement">{{ settings.announcement or "Precision components, clear specs, fast order approval." }}</p>
-          <div class="hero-actions">
-            <a class="primary-btn" href="{{ url_for('products_page') }}">Browse products</a>
-            <button class="secondary-btn" id="heroBusinessBtn" type="button">Business login</button>
+      <section class="marketplace-category-strip" aria-label="Component categories">
+        <button type="button" class="active" data-home-category="All"><span>FY</span><strong>For You</strong></button>
+        <button type="button" data-home-category="Microcontroller"><span>MCU</span><strong>Microcontrollers</strong></button>
+        <button type="button" data-home-category="Wireless Module"><span>RF</span><strong>Wireless Modules</strong></button>
+        <button type="button" data-home-category="Sensor"><span>SNS</span><strong>Sensors</strong></button>
+        <button type="button" data-home-category="Power IC"><span>PWR</span><strong>Power ICs</strong></button>
+        <button type="button" data-home-category="Connector"><span>I/O</span><strong>Connectors</strong></button>
+        <button type="button" data-home-category="Development Board"><span>DEV</span><strong>Development Boards</strong></button>
+        <button type="button" data-home-category="Display"><span>DSP</span><strong>Displays</strong></button>
+        <button type="button" data-home-category="Tool"><span>TL</span><strong>Tools</strong></button>
+        <button type="button" data-home-category="Robotics"><span>BOT</span><strong>Robotics</strong></button>
+        <button type="button" data-home-category="Resistor"><span>R</span><strong>Resistors</strong></button>
+        <button type="button" data-home-category="Capacitor"><span>C</span><strong>Capacitors</strong></button>
+      </section>
+
+      <section class="shop-hero marketplace-hero" aria-label="Marketplace promotions">
+        <div class="promo-carousel-shell">
+          <button class="promo-nav promo-prev" type="button" aria-label="Previous offer" data-promo-prev>&lsaquo;</button>
+          <div class="promo-carousel" id="promoCarousel" aria-label="Featured marketplace offers">
+          <article class="promo-slide">
+            <div class="promo-copy">
+              <span class="promo-kicker">Chip deal zone</span>
+              <h1>ESP32 IoT module kits</h1>
+              <p>Wireless modules, dev boards, and sensor-ready parts for connected builds.</p>
+              <a class="primary-btn" href="{{ url_for('products_page') }}#wireless">Shop modules</a>
+            </div>
+            <div class="promo-product-showcase" aria-label="Featured ESP32 products">
+              <article>
+                <img src="{{ url_for('static', filename='images/samples/sample-1.webp') }}" alt="ESP32 wireless module">
+                <span>ESP32-WROOM-32E</span>
+                <strong>INR 489</strong>
+                <small>Best seller</small>
+              </article>
+              <article>
+                <img src="{{ url_for('static', filename='images/product-placeholder.webp') }}" alt="LoRa wireless module">
+                <span>LoRa SX1278 Module</span>
+                <strong>Long range</strong>
+                <small>New arrival</small>
+              </article>
+            </div>
+          </article>
+
+          <article class="promo-slide">
+            <div class="promo-copy">
+              <span class="promo-kicker">MCU launch picks</span>
+              <h1>Microcontrollers for labs</h1>
+              <p>STM32, AVR, and embedded control chips for prototypes and small batches.</p>
+              <a class="primary-btn" href="{{ url_for('products_page') }}#bulk">Explore bulk deals</a>
+            </div>
+            <div class="promo-product-showcase" aria-label="Featured microcontroller products">
+              <article>
+                <img src="{{ url_for('static', filename='images/samples/sample-0.webp') }}" alt="STM32 development microcontroller">
+                <span>STM32F407VGT6</span>
+                <strong>INR 1,299</strong>
+                <small>Top rated</small>
+              </article>
+              <article>
+                <img src="{{ url_for('static', filename='images/samples/sample-2.webp') }}" alt="ATmega microcontroller">
+                <span>ATmega328P-PU</span>
+                <strong>INR 265</strong>
+                <small>Fast moving</small>
+              </article>
+            </div>
+          </article>
+
+          <article class="promo-slide">
+            <div class="promo-copy">
+              <span class="promo-kicker">Prototype essentials</span>
+              <h1>Boards, sensors & power ICs</h1>
+              <p>Build faster with core components, breadboard-ready parts, and bench essentials.</p>
+              <a class="primary-btn" href="{{ url_for('products_page') }}#deals">View deals</a>
+            </div>
+            <div class="promo-product-showcase" aria-label="Featured prototyping products">
+              <article>
+                <img src="{{ url_for('static', filename='images/product-placeholder.webp') }}" alt="Sensor kit">
+                <span>Sensor starter kit</span>
+                <strong>20+ parts</strong>
+                <small>Prototype ready</small>
+              </article>
+              <article>
+                <img src="{{ url_for('static', filename='images/product-placeholder.webp') }}" alt="Power IC assortment">
+                <span>Power IC pack</span>
+                <strong>Bulk ready</strong>
+                <small>Lab supply</small>
+              </article>
+            </div>
+          </article>
           </div>
-          {% endif %}
+          <button class="promo-nav promo-next" type="button" aria-label="Next offer" data-promo-next>&rsaquo;</button>
+          <div class="promo-dots" aria-label="Promotion carousel pages">
+            <button type="button" class="active" aria-label="Show ESP32 and IoT modules banner" data-promo-dot="0"></button>
+            <button type="button" aria-label="Show bulk components banner" data-promo-dot="1"></button>
+            <button type="button" aria-label="Show electronics deals banner" data-promo-dot="2"></button>
+          </div>
         </div>
-        <div class="popular-hero-panel" id="popularHeroPanel" aria-label="Most popular product"></div>
-        <div class="hero-metrics" aria-label="Store highlights">
-          <span><strong id="heroProductCount">3</strong> products</span>
-          <span><strong>18%</strong> GST shown</span>
-          <span><strong>B2B</strong> invoices</span>
-        </div>
+
+        <aside class="marketplace-rail" aria-label="Marketplace highlights">
+          <div class="popular-hero-panel" id="popularHeroPanel" aria-label="Most popular product"></div>
+          <div class="hero-metrics" aria-label="Store highlights">
+            <span><strong id="heroProductCount">3</strong> products</span>
+            <span><strong>18%</strong> GST shown</span>
+            <span><strong>B2B</strong> invoices</span>
+          </div>
+        </aside>
       </section>
 
       <section class="trust-strip" aria-label="Buyer and distributor promises">
@@ -126,26 +363,37 @@
 
       <section class="product-grid" id="productGrid" aria-live="polite"></section>
 
-      <section class="community-reviews" aria-labelledby="communityReviewsTitle">
+      <section class="community-reviews community-live-hub" aria-labelledby="communityReviewsTitle">
         <div class="community-left-panel">
           <p class="eyebrow">Community Hub</p>
-          <h2 class="section-title" id="communityReviewsTitle">Discussion Board</h2>
-          <p class="subtext">Connect with other builders, share your project experience, ask questions, or report component issues.</p>
+          <h2 class="section-title" id="communityReviewsTitle">Live Builder Talk</h2>
+          <p class="subtext">Ask for part help, share build wins, warn others about tricky components, or drop a quick bench note.</p>
+          <div class="community-pulse" aria-label="Community activity">
+            <span><strong>Live</strong> thoughts</span>
+            <span><strong>Build</strong> notes</span>
+            <span><strong>Part</strong> help</span>
+          </div>
           <div class="community-categories" id="communityCategories" aria-label="Categories">
             <button type="button" class="category-tab active" data-category="All">All Topics</button>
-            <button type="button" class="category-tab" data-category="Problem">⚠️ Problems</button>
-            <button type="button" class="category-tab" data-category="Experience">💬 Experiences</button>
-            <button type="button" class="category-tab" data-category="Project">💡 Projects</button>
-            <button type="button" class="category-tab" data-category="General">🌐 General</button>
+            <button type="button" class="category-tab" data-category="Problem">Problems</button>
+            <button type="button" class="category-tab" data-category="Experience">Build Stories</button>
+            <button type="button" class="category-tab" data-category="Project">Projects</button>
+            <button type="button" class="category-tab" data-category="General">General</button>
           </div>
-          <button class="primary-btn start-post-btn" id="startPostBtn" type="button">Start a Discussion</button>
+          <button class="primary-btn start-post-btn" id="startPostBtn" type="button">Share a Thought</button>
         </div>
 
-        <div class="community-main-panel">
-          <!-- Form to post (hidden by default, toggled via startPostBtn) -->
+        <aside class="community-live-panel" aria-label="Live community thoughts">
+          <header class="community-live-head">
+            <div>
+              <p class="eyebrow">Builder Feed</p>
+              <h3>Live Thoughts</h3>
+            </div>
+            <span class="live-status"><span aria-hidden="true"></span>Live</span>
+          </header>
           <div class="post-form-card hidden" id="postFormCard">
             <header class="post-form-header">
-              <h3>Start a new discussion</h3>
+              <h3>Post to the live board</h3>
               <button class="icon-btn close-form-btn" id="closePostFormBtn" type="button">&times;</button>
             </header>
             <form class="community-post-form" id="communityPostForm">
@@ -154,25 +402,48 @@
                 <label>Category
                   <select name="category" required>
                     <option value="General">General Discussion</option>
-                    <option value="Problem">⚠️ Problem / Issue</option>
-                    <option value="Experience">💬 Shopping Experience</option>
-                    <option value="Project">💡 Project Share</option>
+                    <option value="Problem">Problem / Issue</option>
+                    <option value="Experience">Build Story</option>
+                    <option value="Project">Project Share</option>
                   </select>
                 </label>
               </div>
-              <label>Discussion Title<input name="title" required placeholder="What's on your mind?"></label>
-              <label>Content / Details<textarea name="content" rows="4" required placeholder="Share your experience, ask a question, or describe a component issue..."></textarea></label>
+              <label>Thought Title<input name="title" required placeholder="What are you building or debugging?"></label>
+              <label>Details<textarea name="content" rows="4" required placeholder="Share the part number, symptom, idea, or quick jugaad that helped..."></textarea></label>
+              <aside class="thought-live-preview" aria-label="Live thought preview">
+                <p class="eyebrow">Live Preview</p>
+                <article class="post-card-board preview-post-card" id="thoughtLivePreview">
+                  <header class="post-header-board">
+                    <div class="post-author-info">
+                      <span class="user-avatar-initial" id="previewAuthorInitial">Y</span>
+                      <div>
+                        <strong class="author-name" id="previewAuthorName">Your name</strong>
+                        <small class="post-time">Live draft</small>
+                      </div>
+                    </div>
+                    <span class="category-badge badge-general" id="previewCategory">General</span>
+                  </header>
+                  <div class="post-body-board">
+                    <h3 class="post-title-board" id="previewTitle">Your thought title will appear here</h3>
+                    <p class="post-content-board" id="previewContent">Start typing details and the live community card will update here.</p>
+                  </div>
+                  <footer class="post-footer-board">
+                    <span class="post-action-btn preview-action">&#9825; 0 Likes</span>
+                    <span class="post-action-btn preview-action">&#128172; 0 Comments</span>
+                  </footer>
+                </article>
+              </aside>
               <div class="form-actions">
                 <p class="form-help login-notice" id="postLoginNotice">You are posting as a guest. <button type="button" class="text-link-btn" id="postFormLoginBtn">Log in</button> to post as a verified member.</p>
-                <button class="primary-btn" type="submit" id="submitPostBtn">Post to Board</button>
+                <button class="primary-btn" type="submit" id="submitPostBtn">Post Live</button>
               </div>
             </form>
           </div>
-          
-          <div class="community-posts-list" id="communityPostsList">
+
+          <div class="community-posts-list live-thought-feed" id="communityPostsList" aria-live="polite">
             <!-- Dynamic posts go here -->
           </div>
-        </div>
+        </aside>
       </section>
     </main>
 
@@ -300,6 +571,35 @@
       </form>
     </dialog>
 
+    <dialog class="modal" id="locationModal">
+      <form method="dialog" class="modal-close-row">
+        <button class="icon-btn" aria-label="Close">&times;</button>
+      </form>
+      <h2>Select Delivery Location</h2>
+      <p class="form-help">Enter a pincode or select a state to see shipping timelines and options.</p>
+      <form id="locationForm" class="checkout-form">
+        <label>Pincode
+          <input type="text" name="pincode" id="locationPincodeInput" placeholder="e.g., 411006" pattern="[0-9]{6}" maxlength="6" required>
+        </label>
+        <label>State
+          <select name="state" id="locationStateSelect" required>
+            <option value="">Choose State...</option>
+            <option value="Andhra Pradesh">Andhra Pradesh</option>
+            <option value="Delhi">Delhi</option>
+            <option value="Gujarat">Gujarat</option>
+            <option value="Karnataka">Karnataka</option>
+            <option value="Maharashtra">Maharashtra</option>
+            <option value="Tamil Nadu">Tamil Nadu</option>
+            <option value="Telangana">Telangana</option>
+            <option value="Uttar Pradesh">Uttar Pradesh</option>
+            <option value="West Bengal">West Bengal</option>
+            <option value="Other">Other India Location</option>
+          </select>
+        </label>
+        <button class="primary-btn" type="submit">Apply Location</button>
+      </form>
+    </dialog>
+
     <dialog class="modal" id="ordersModal">
       <form method="dialog" class="modal-close-row">
         <button class="icon-btn" aria-label="Close">&times;</button>
@@ -372,8 +672,8 @@
         <div class="settings-panel" data-settings-panel="theme">
           <label>Store theme
             <select id="settingsThemeSelect">
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
+              <option value="dark">Cyber Blue</option>
+              <option value="light">Deep Cyan</option>
             </select>
           </label>
           <p class="form-help">Theme preference is saved on this device.</p>
@@ -420,6 +720,6 @@
       </div>
     </section>
 
-    <script src="{{ url_for('static', filename='js/storefront.js') }}?v=single-account-menu-help-footer"></script>
+    <script src="{{ url_for('static', filename='js/storefront.js') }}?v=cyber-blue-marketplace"></script>
   </body>
 </html>
