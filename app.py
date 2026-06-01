@@ -72,6 +72,13 @@ def clean_env(value):
     return (value or "").strip().strip('"').strip("'")
 
 
+BASE_DIR = Path(__file__).resolve().parent
+SQLITE_FALLBACK_PATH = Path(os.getenv("SQLITE_FALLBACK_PATH") or "/tmp/microchip_cart.sqlite3")
+if not os.getenv("VERCEL"):
+    SQLITE_FALLBACK_PATH = BASE_DIR / "instance" / "local_store.sqlite3"
+LOCAL_DATABASE_URL = "sqlite:///" + SQLITE_FALLBACK_PATH.resolve().as_posix()
+
+
 def build_database_url():
     raw_url = clean_env(os.getenv("DATABASE_URL"))
     supabase_password = clean_env(os.getenv("SUPABASE_DB_PASSWORD"))
@@ -98,10 +105,8 @@ def build_database_url():
                     f"{host_marker}{host_and_path}"
                 )
     else:
-        raise RuntimeError(
-            "Database is not configured. Set either DATABASE_URL with the real password "
-            "or set SUPABASE_DB_PASSWORD in .env."
-        )
+        print("Database env not configured; using temporary SQLite fallback.")
+        return LOCAL_DATABASE_URL
 
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
@@ -118,13 +123,14 @@ def build_database_url():
 
 
 DATABASE_URL = build_database_url()
-LOCAL_DATABASE_URL = f"sqlite:///{(Path(__file__).resolve().parent / 'instance' / 'local_store.sqlite3').as_posix()}"
-DATABASE_LABEL = "postgresql"
+DATABASE_LABEL = "sqlite fallback" if DATABASE_URL.startswith("sqlite") else "postgresql"
 
 
 def create_app_engine(database_url):
     if database_url.startswith("sqlite"):
-        Path(__file__).resolve().parent.joinpath("instance").mkdir(exist_ok=True)
+        sqlite_path = database_url.replace("sqlite:///", "", 1)
+        if sqlite_path and sqlite_path != ":memory:":
+            Path(sqlite_path).parent.mkdir(parents=True, exist_ok=True)
         return create_engine(
             database_url,
             pool_pre_ping=True,
@@ -412,8 +418,9 @@ def initialize_database():
         Base.metadata.create_all(engine)
         ensure_compatible_schema()
         ensure_sqlite_schema()
-    except SQLAlchemyError:
-        if os.getenv("APP_ENV") == "production":
+    except SQLAlchemyError as exc:
+        print(f"Database initialization failed; using SQLite fallback: {exc}")
+        if os.getenv("APP_ENV") == "production" and not os.getenv("VERCEL"):
             raise
         engine = create_app_engine(LOCAL_DATABASE_URL)
         DBSession.configure(bind=engine)
