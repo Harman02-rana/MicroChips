@@ -5,7 +5,10 @@ import secrets
 import smtplib
 import ssl
 import uuid
-from datetime import datetime, timezone
+import hashlib
+import hmac
+import base64
+from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse, parse_qsl, urlencode
@@ -175,9 +178,11 @@ class UserModel(Base):
     id             = Column(GUID(), primary_key=True, default=uuid.uuid4)
     email          = Column(String(255), unique=True, nullable=False)
     phone          = Column(String(30), unique=True, nullable=True)
-    password_hash  = Column(Text, nullable=False)
+    password_hash  = Column(Text, nullable=True)
     name           = Column(String(255), nullable=True)
+    full_name      = Column(String(255), nullable=True)
     account_type   = Column(String(10), default="B2C")
+    role           = Column(String(30), default="customer")
     company_name   = Column(String(255), nullable=True)
     gstin          = Column(String(30), nullable=True)
     is_admin       = Column(Boolean, default=False)
@@ -280,7 +285,7 @@ class CommunityPostModel(Base):
     user_name  = Column(String(255), nullable=False)
     title      = Column(String(255), nullable=False)
     content    = Column(Text, nullable=False)
-    category   = Column(String(50), default="General") # Problem, Experience, Project, General
+    category   = Column(String(50), default="Need Eyes")
     likes      = Column(Integer, default=0)
     liked_by   = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -310,6 +315,9 @@ def ensure_compatible_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'Active'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(30) DEFAULT 'customer'",
+        "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Microchip'",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100)",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS model VARCHAR(100)",
@@ -349,6 +357,8 @@ def ensure_sqlite_schema():
         "ALTER TABLE users ADD COLUMN account_type VARCHAR(10) DEFAULT 'B2C'",
         "ALTER TABLE users ADD COLUMN company_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN gstin VARCHAR(30)",
+        "ALTER TABLE users ADD COLUMN role VARCHAR(30) DEFAULT 'customer'",
+        "ALTER TABLE users ADD COLUMN full_name VARCHAR(255)",
     ]
     with engine.begin() as connection:
         for statement in ddl_statements:
@@ -356,6 +366,44 @@ def ensure_sqlite_schema():
                 connection.execute(text(statement))
             except SQLAlchemyError:
                 pass
+        user_columns = connection.execute(text("PRAGMA table_info(users)")).mappings().all()
+        password_column = next((column for column in user_columns if column["name"] == "password_hash"), None)
+        if password_column and password_column["notnull"]:
+            connection.execute(text("""
+                CREATE TABLE users_schema_fix (
+                    id CHAR(32) NOT NULL PRIMARY KEY,
+                    email VARCHAR(255) NOT NULL UNIQUE,
+                    phone VARCHAR(30) UNIQUE,
+                    password_hash TEXT,
+                    name VARCHAR(255),
+                    full_name VARCHAR(255),
+                    account_type VARCHAR(10) DEFAULT 'B2C',
+                    role VARCHAR(30) DEFAULT 'customer',
+                    company_name VARCHAR(255),
+                    gstin VARCHAR(30),
+                    is_admin BOOLEAN DEFAULT 0,
+                    email_verified BOOLEAN DEFAULT 0,
+                    phone_verified BOOLEAN DEFAULT 0,
+                    status VARCHAR(30) DEFAULT 'Active',
+                    last_login DATETIME,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+            """))
+            old_column_names = {column["name"] for column in user_columns}
+            target_columns = [
+                "id", "email", "phone", "password_hash", "name", "full_name",
+                "account_type", "role", "company_name", "gstin", "is_admin",
+                "email_verified", "phone_verified", "status", "last_login",
+                "created_at", "updated_at",
+            ]
+            copy_columns = [column for column in target_columns if column in old_column_names]
+            connection.execute(text(
+                f"INSERT INTO users_schema_fix ({', '.join(copy_columns)}) "
+                f"SELECT {', '.join(copy_columns)} FROM users"
+            ))
+            connection.execute(text("DROP TABLE users"))
+            connection.execute(text("ALTER TABLE users_schema_fix RENAME TO users"))
 
 
 def initialize_database():
@@ -403,8 +451,8 @@ ALLOWED_IMAGE_EXTENSIONS = {"webp"}
 ADMIN_EMAIL              = (os.getenv("ADMIN_EMAIL", "admin@microchipcart.local")).strip().lower()
 ADMIN_PASSWORD           = os.getenv("ADMIN_PASSWORD", "Admin@12345")
 ADMIN_NOTIFICATION_EMAIL = (os.getenv("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL)).strip().lower()
-OWNER_EMAIL              = (os.getenv("OWNER_EMAIL", ADMIN_EMAIL)).strip().lower()
-OWNER_PASSWORD           = os.getenv("OWNER_PASSWORD", ADMIN_PASSWORD)
+OWNER_EMAIL              = (os.getenv("OWNER_EMAIL") or "owner@microchipcart.local").strip().lower()
+OWNER_PASSWORD           = os.getenv("OWNER_PASSWORD") or "Owner@12345"
 SMTP_PLACEHOLDERS        = {
     "",
     "yourgmail@gmail.com",
@@ -431,6 +479,8 @@ def normalize_email(email):
 def normalize_account_type(value):
     return "B2B" if str(value or "").upper() == "B2B" else "B2C"
 
+GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$"
+
 def supabase_user_metadata(auth_user):
     if not auth_user:
         return {}
@@ -443,33 +493,245 @@ def supabase_account_type(auth_user, fallback="B2C"):
 
 def session_login_for(user):
     session["user_id"] = str_id(user.id)
-    if (user.account_type or "B2C") == "B2B":
+    if (user.account_type or "B2C") == "B2B" or getattr(user, "is_admin", False):
         session["admin_logged_in"] = True
+        session["admin_role"] = "owner_admin" if getattr(user, "is_admin", False) else "distributor"
     else:
         session.pop("admin_logged_in", None)
+        session.pop("admin_role", None)
 
-def supabase_auth_signup(email, password, name, account_type):
+def supabase_auth_signup(email, password):
     if not supabase:
-        return None, None
+        raise RuntimeError("missing Supabase env vars")
     try:
         response = supabase.auth.sign_up({
             "email": email,
-            "password": password,
-            "options": {"data": {"name": name, "account_type": account_type}},
+            "password": password
         })
         return getattr(response, "user", None), None
     except Exception as exc:
-        print(f"Supabase signup skipped: {exc}")
+        print(f"Supabase signup failed: {exc}")
         return None, exc
+
+def supabase_admin_client():
+    if not create_client:
+        return None
+    service_role_key = clean_env(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+    if supabase_url in SUPABASE_PLACEHOLDERS or service_role_key in SUPABASE_PLACEHOLDERS:
+        return None
+    try:
+        return create_client(supabase_url, service_role_key)
+    except Exception as exc:
+        print(f"Supabase admin client unavailable: {exc}")
+        return None
+
+def auth_user_id(auth_user):
+    if isinstance(auth_user, dict):
+        return auth_user.get("id")
+    return getattr(auth_user, "id", None) if auth_user else None
+
+def auth_user_email(auth_user):
+    if isinstance(auth_user, dict):
+        return normalize_email(auth_user.get("email", ""))
+    return normalize_email(getattr(auth_user, "email", "") if auth_user else "")
+
+def auth_user_identities(auth_user):
+    identities = getattr(auth_user, "identities", None)
+    if identities is None:
+        return None
+    return identities if isinstance(identities, list) else list(identities or [])
+
+def is_supabase_duplicate_error(exc):
+    exc_str = str(exc or "").lower()
+    return "already" in exc_str or "registered" in exc_str or "exists" in exc_str
+
+def supabase_signup_existing_user(auth_user):
+    identities = auth_user_identities(auth_user)
+    return identities == []
+
+def supabase_find_auth_user_by_email(email):
+    admin_client = supabase_admin_client()
+    if not admin_client:
+        return None
+    target = normalize_email(email)
+    try:
+        page = 1
+        while True:
+            users = admin_client.auth.admin.list_users(page=page, per_page=100)
+            if not users:
+                return None
+            for auth_user in users:
+                if auth_user_email(auth_user) == target:
+                    return auth_user
+            if len(users) < 100:
+                return None
+            page += 1
+    except Exception as exc:
+        print(f"Could not list Supabase Auth users: {exc}")
+        return None
+
+def supabase_prepare_email_otp_user(email):
+    auth_user = supabase_find_auth_user_by_email(email)
+    if auth_user:
+        print("SUPABASE EMAIL OTP USER: existing auth user found.")
+        return True, None
+
+    admin_client = supabase_admin_client()
+    if not admin_client:
+        return False, "SUPABASE_SERVICE_ROLE_KEY is required to create an OTP auth user without sending a confirmation email."
+
+    try:
+        admin_client.auth.admin.create_user({
+            "email": email,
+            "password": secrets.token_urlsafe(32),
+            "email_confirm": True,
+            "user_metadata": {"otp_signup_pending": True},
+        })
+        print("SUPABASE EMAIL OTP USER: created auth user without confirmation email.")
+        return True, None
+    except Exception as exc:
+        if is_supabase_duplicate_error(exc) and supabase_find_auth_user_by_email(email):
+            print("SUPABASE EMAIL OTP USER: auth user already existed after create attempt.")
+            return True, None
+        return False, str(exc)
+
+def supabase_response_user(response):
+    if isinstance(response, dict):
+        return response.get("user") or response
+    return getattr(response, "user", None) or response
+
+def supabase_ensure_verified_auth_user(email, password, metadata=None):
+    admin_client = supabase_admin_client()
+    if not admin_client:
+        return None, "SUPABASE_SERVICE_ROLE_KEY is required to create the verified auth user."
+
+    attrs = {
+        "email": email,
+        "password": password,
+        "email_confirm": True,
+        "user_metadata": metadata or {},
+    }
+    try:
+        response = admin_client.auth.admin.create_user(attrs)
+        auth_user = supabase_response_user(response)
+        if auth_user:
+            print("SUPABASE AUTH USER SETUP: created verified auth user.")
+            return auth_user, None
+        return None, "Supabase auth user was created but no user was returned."
+    except Exception as exc:
+        if not is_supabase_duplicate_error(exc):
+            return None, str(exc)
+
+    auth_user = supabase_find_auth_user_by_email(email)
+    user_id = auth_user_id(auth_user)
+    if not user_id:
+        return None, "This email already exists in Supabase Auth but could not be loaded for update."
+
+    try:
+        response = admin_client.auth.admin.update_user_by_id(str(user_id), attrs)
+        updated_user = supabase_response_user(response) or auth_user
+        print("SUPABASE AUTH USER SETUP: updated existing verified auth user.")
+        return updated_user, None
+    except Exception as update_exc:
+        return None, str(update_exc)
+
+def supabase_delete_auth_user(user_id):
+    admin_client = supabase_admin_client()
+    if not admin_client or not user_id:
+        return False
+    try:
+        admin_client.auth.admin.delete_user(str(user_id))
+        return True
+    except Exception as exc:
+        print(f"Could not delete Supabase Auth user {user_id}: {exc}")
+        return False
+
+def supabase_signup_with_metadata(email, password, account_type):
+    response = supabase.auth.sign_up({
+        "email": email,
+        "password": password,
+        "options": {
+            "data": {
+                "account_type": account_type,
+                "role": "business" if account_type == "B2B" else "customer",
+            }
+        }
+    })
+    return getattr(response, "user", None)
+
+def supabase_signup_recovering_orphan(email, password, account_type):
+    auth_user = None
+    try:
+        auth_user = supabase_signup_with_metadata(email, password, account_type)
+        if auth_user and not supabase_signup_existing_user(auth_user):
+            return auth_user, None
+    except Exception as exc:
+        if not is_supabase_duplicate_error(exc):
+            return None, f"Supabase Auth failed: {str(exc)}"
+
+    stale_auth_user = supabase_find_auth_user_by_email(email) or (
+        auth_user if auth_user_email(auth_user) == normalize_email(email) else None
+    )
+    if not stale_auth_user:
+        return None, "This email already exists in Supabase Auth. Delete it from Supabase Authentication users, then try again."
+
+    if not supabase_delete_auth_user(auth_user_id(stale_auth_user)):
+        return None, "This email still exists in Supabase Auth. Set SUPABASE_SERVICE_ROLE_KEY or delete it from Supabase Authentication users, then try again."
+
+    try:
+        return supabase_signup_with_metadata(email, password, account_type), None
+    except Exception as exc:
+        return None, f"Supabase Auth failed after cleanup: {str(exc)}"
+
+def supabase_set_user_password(user_id, password, metadata=None):
+    metadata = metadata or {}
+    try:
+        supabase.auth.update_user({"password": password, "data": metadata})
+        return True, None
+    except Exception as user_exc:
+        admin_client = supabase_admin_client()
+        if not admin_client:
+            return False, str(user_exc)
+        try:
+            admin_client.auth.admin.update_user_by_id(str(user_id), {
+                "password": password,
+                "user_metadata": metadata,
+                "email_confirm": True,
+            })
+            return True, None
+        except Exception as admin_exc:
+            return False, str(admin_exc)
+
+def supabase_verify_email_otp(email, otp):
+    email = normalize_email(email)
+    otp = str(otp or "").strip()
+    print("SUPABASE VERIFY EMAIL:", email)
+    print("SUPABASE VERIFY OTP LENGTH:", len(otp or ""))
+    last_error = None
+    for verify_type in ("email", "signup"):
+        payload = {
+            "email": email,
+            "token": otp,
+            "type": verify_type,
+        }
+        print("SUPABASE VERIFY TYPE:", verify_type)
+        try:
+            response = supabase.auth.verify_otp(payload)
+            print("SUPABASE OTP VERIFICATION SUCCESS")
+            return response, verify_type, None
+        except Exception as exc:
+            last_error = exc
+            print(f"SUPABASE OTP VERIFICATION FAILURE ({verify_type}): {exc}")
+    return None, "signup", last_error
 
 def supabase_auth_login(email, password):
     if not supabase:
-        return None, None
+        raise RuntimeError("missing Supabase env vars")
     try:
         response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         return getattr(response, "user", None), None
     except Exception as exc:
-        print(f"Supabase login failed, falling back to local profile auth: {exc}")
+        print(f"Supabase login failed: {exc}")
         return None, exc
 
 def client_ip():
@@ -523,24 +785,31 @@ def public_user(u):
     if u is None:
         return None
     if isinstance(u, dict):
-        return {k: u.get(k) for k in ("id", "name", "email", "phone", "account_type", "company_name", "gstin", "created_at")}
+        return {k: u.get(k) for k in ("id", "name", "full_name", "email", "phone", "account_type", "role", "company_name", "gstin", "is_admin", "created_at")}
     return {
         "id":           str_id(u.id),
         "name":         u.name or "",
+        "full_name":    u.full_name or u.name or "",
         "email":        u.email,
         "phone":        u.phone or "",
         "account_type": u.account_type or "B2C",
+        "role":         u.role or ("business" if u.account_type == "B2B" else "customer"),
         "company_name": u.company_name or "",
         "gstin":        u.gstin or "",
+        "is_admin":     bool(u.is_admin),
         "created_at":   u.created_at.isoformat() if u.created_at else "",
     }
 
 def auth_redirect_url(user):
     if isinstance(user, dict):
         account_type = user.get("account_type") or "B2C"
+        is_admin = user.get("is_admin") or False
     else:
         account_type = getattr(user, "account_type", None) or "B2C"
-    return url_for("admin_page") if account_type == "B2B" else "/"
+        is_admin = getattr(user, "is_admin", False) or False
+    if is_admin:
+        return "/admin"
+    return "/admin" if account_type == "B2B" else "/"
 
 def product_to_dict(p: ProductModel) -> dict:
     count = p.rating_count or 0
@@ -601,6 +870,12 @@ def review_to_dict(r: ReviewModel) -> dict:
         "created_at": r.created_at.isoformat() if r.created_at else "",
     }
 
+def can_delete_community_item(item) -> bool:
+    if session.get("admin_logged_in"):
+        return True
+    user_id = session.get("user_id")
+    return bool(user_id and str_id(getattr(item, "user_id", None)) == str_id(user_id))
+
 def post_to_dict(p: CommunityPostModel, db) -> dict:
     reply_count = db.query(CommunityReplyModel).filter_by(post_id=p.id).count()
     return {
@@ -609,10 +884,11 @@ def post_to_dict(p: CommunityPostModel, db) -> dict:
         "user_name":  p.user_name or "Anonymous",
         "title":      p.title,
         "content":    p.content,
-        "category":   p.category or "General",
+        "category":   p.category or "Need Eyes",
         "likes":      p.likes or 0,
         "liked_by":   p.liked_by or [],
         "reply_count": reply_count,
+        "can_delete": can_delete_community_item(p),
         "created_at": p.created_at.isoformat() if p.created_at else "",
     }
 
@@ -623,6 +899,7 @@ def reply_to_dict(r: CommunityReplyModel) -> dict:
         "user_id":    str_id(r.user_id),
         "user_name":  r.user_name or "Anonymous",
         "content":    r.content,
+        "can_delete": can_delete_community_item(r),
         "created_at": r.created_at.isoformat() if r.created_at else "",
     }
 
@@ -654,18 +931,33 @@ def require_admin():
     if not session.get("admin_logged_in"):
         abort(make_response(api_error("Admin login required.", 401)[0], 401))
 
+def owner_auth_version():
+    fingerprint = f"{OWNER_EMAIL}\0{OWNER_PASSWORD}".encode("utf-8")
+    return hashlib.sha256(fingerprint).hexdigest()[:24]
+
+def owner_session_is_current():
+    return session.get("owner_logged_in") and session.get("owner_auth_version") == owner_auth_version()
+
+def clear_owner_session():
+    session.pop("owner_logged_in", None)
+    session.pop("owner_auth_version", None)
+    if session.get("admin_role") == "owner_admin":
+        session.pop("admin_logged_in", None)
+        session.pop("admin_role", None)
+
 def require_owner():
-    if not session.get("owner_logged_in"):
+    if not owner_session_is_current():
+        clear_owner_session()
         abort(make_response(api_error("Owner login required.", 401)[0], 401))
 
 
 # ── Response helpers ──────────────────────────────────────────────────────────
 
 def api_ok(payload=None, status=200):
-    return jsonify({"ok": True, **(payload or {})}), status
+    return jsonify({"ok": True, "success": True, **(payload or {})}), status
 
 def api_error(message, status=400):
-    return jsonify({"ok": False, "error": message}), status
+    return jsonify({"ok": False, "success": False, "error": message}), status
 
 
 # ── Email (SMTP) ──────────────────────────────────────────────────────────────
@@ -812,7 +1104,7 @@ def send_order_email(order):
 def analytics_payload():
     db = DBSession()
     try:
-        products = db.query(ProductModel).all()
+        products = db.query(ProductModel).filter_by(is_sample=False).all()
         orders   = db.query(OrderModel).all()
         events   = db.query(EventModel).all()
         approved = [o for o in orders if o.status == "Approved"]
@@ -868,13 +1160,16 @@ def owner_overview_payload():
     db = DBSession()
     try:
         users = db.query(UserModel).order_by(UserModel.created_at.desc()).all()
+        business_profiles = db.query(BusinessProfileModel).order_by(BusinessProfileModel.created_at.desc()).all()
         products = db.query(ProductModel).order_by(ProductModel.created_at.desc()).all()
         orders = db.query(OrderModel).order_by(OrderModel.created_at.desc()).all()
         events = db.query(EventModel).order_by(EventModel.created_at.desc()).limit(120).all()
+        settings_row = db.query(SettingsModel).filter_by(key="store").first()
         analytics = analytics_payload()
 
         customers = [u for u in users if (u.account_type or "B2C") != "B2B"]
         businesses = [u for u in users if (u.account_type or "B2C") == "B2B"]
+        profile_by_id = {str_id(profile.id): profile for profile in business_profiles}
 
         spend_by_email = {}
         orders_by_email = {}
@@ -911,8 +1206,13 @@ def owner_overview_payload():
         business_rows = []
         for user in businesses:
             email = normalize_email(user.email)
+            profile = profile_by_id.get(str_id(user.id))
             business_rows.append({
                 **user_to_dict(user),
+                "company_name": (profile.business_name if profile else user.company_name) or "",
+                "business_address": (profile.business_address if profile else "") or "",
+                "gstin": (profile.gst_number if profile else user.gstin) or "",
+                "approval_status": (profile.approval_status if profile else user.status) or "Pending",
                 "orders": orders_by_email.get(email, 0),
                 "spend": money(spend_by_email.get(email, 0)),
                 "last_order": last_order_by_email.get(email, ""),
@@ -939,6 +1239,7 @@ def owner_overview_payload():
             "cards": {
                 "customers": len(customers),
                 "business_distributors": len(businesses),
+                "pending_businesses": len([p for p in business_profiles if (p.approval_status or "Pending") == "Pending"]),
                 "products": len([p for p in products if not p.is_sample]),
                 "orders": len(orders),
                 "revenue": money(revenue),
@@ -961,6 +1262,7 @@ def owner_overview_payload():
                 "metadata": e.event_metadata or {},
                 "created_at": e.created_at.isoformat() if e.created_at else "",
             } for e in events],
+            "settings": settings_row.value if settings_row else {},
             "analytics": analytics,
             "insights": {
                 "category_counts": category_counts,
@@ -1067,6 +1369,26 @@ def products_page():
         db.close()
     return render_template("index.html", settings=settings, page_mode="products")
 
+@app.get("/community")
+def community_page():
+    db = DBSession()
+    try:
+        row = db.query(SettingsModel).filter_by(key="store").first()
+        settings = row.value if row else {}
+    finally:
+        db.close()
+    return render_template("community/index.html", settings=settings, user=public_user(current_user()), page_mode="community")
+
+@app.get("/help")
+def help_page():
+    db = DBSession()
+    try:
+        row = db.query(SettingsModel).filter_by(key="store").first()
+        settings = row.value if row else {}
+    finally:
+        db.close()
+    return render_template("help.html", settings=settings, page_mode="help")
+
 @app.get("/login")
 def login_page():
     return redirect("/#login")
@@ -1079,7 +1401,8 @@ def signup_page():
 def admin_page():
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login_page"))
-    return render_template("admin.html", store_mode=DATABASE_LABEL, admin_email=ADMIN_EMAIL)
+    is_owner_admin = session.get("admin_role") == "owner_admin" or session.get("owner_logged_in")
+    return render_template("admin.html", store_mode=DATABASE_LABEL, admin_email=ADMIN_EMAIL, is_owner_admin=is_owner_admin)
 
 @app.get("/admin/login")
 def admin_login_page():
@@ -1101,14 +1424,18 @@ def admin_invoice(order_id):
 
 @app.get("/owner")
 def owner_page():
-    if not session.get("owner_logged_in"):
+    if session.get("admin_role") == "distributor" and not session.get("owner_logged_in"):
+        return redirect(url_for("admin_page"))
+    if not owner_session_is_current():
+        clear_owner_session()
         return redirect(url_for("owner_login_page"))
     return render_template("owner_admin.html", store_mode=DATABASE_LABEL, owner_email=OWNER_EMAIL)
 
 @app.get("/owner/login")
 def owner_login_page():
-    if session.get("owner_logged_in"):
+    if owner_session_is_current():
         return redirect(url_for("owner_page"))
+    clear_owner_session()
     return render_template("owner_login.html", owner_email=OWNER_EMAIL)
 
 
@@ -1165,6 +1492,302 @@ def api_health():
 
 
 phone_otps = {}
+email_otp_last_sent = {}
+EMAIL_OTP_COOLDOWN_SECONDS = 60
+EMAIL_OTP_LENGTH = 6
+EMAIL_OTP_TTL_SECONDS = 10 * 60
+INVALID_EMAIL_OTP_MESSAGE = "Invalid or expired OTP. Please request a new code."
+
+def email_otp_digest(email, otp):
+    secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
+    message = f"{normalize_email(email)}:{str(otp or '').strip()}".encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+def email_otp_token_signature(email, digest, expires_at):
+    secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
+    message = f"{normalize_email(email)}:{digest}:{expires_at}".encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+def make_email_otp_token(email, otp, expires_at):
+    expires_at_text = expires_at.isoformat()
+    digest = email_otp_digest(email, otp)
+    payload = {
+        "email": normalize_email(email),
+        "digest": digest,
+        "expires_at": expires_at_text,
+        "sig": email_otp_token_signature(email, digest, expires_at_text),
+    }
+    return base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
+
+def read_email_otp_token(token):
+    try:
+        raw = base64.urlsafe_b64decode(str(token or "").encode("ascii"))
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None, "bad_token"
+
+    email = normalize_email(payload.get("email"))
+    digest = payload.get("digest")
+    expires_at_text = payload.get("expires_at")
+    sig = payload.get("sig")
+    if not email or not digest or not expires_at_text or not sig:
+        return None, "bad_token"
+    expected_sig = email_otp_token_signature(email, digest, expires_at_text)
+    if not hmac.compare_digest(sig, expected_sig):
+        return None, "bad_signature"
+    try:
+        expires_at = datetime.fromisoformat(expires_at_text)
+    except Exception:
+        return None, "bad_expiry"
+    return {"email": email, "digest": digest, "expires_at": expires_at}, None
+
+def send_app_email_otp(email):
+    otp = f"{secrets.randbelow(10 ** EMAIL_OTP_LENGTH):0{EMAIL_OTP_LENGTH}d}"
+    expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
+    text_body = (
+        f"Your MicroChip Cart verification code is {otp}.\n\n"
+        "This code expires in 10 minutes. Do not share it with anyone."
+    )
+    html_body = (
+        "<p>Your MicroChip Cart verification code is:</p>"
+        f"<h2 style=\"letter-spacing:4px;\">{otp}</h2>"
+        "<p>This code expires in 10 minutes. Do not share it with anyone.</p>"
+    )
+    if not send_email(email, f"Your MicroChip Cart OTP: {otp}", text_body, html_body):
+        return None
+    return make_email_otp_token(email, otp, expires_at)
+
+def verify_app_email_otp(email, otp, otp_token):
+    email = normalize_email(email)
+    otp = str(otp or "").strip()
+    token_record, token_error = read_email_otp_token(otp_token)
+    if not token_record:
+        print(f"APP EMAIL OTP TOKEN FAILURE: {token_error}")
+        return False, token_error
+    if token_record["email"] != email:
+        print("APP EMAIL OTP EMAIL MISMATCH:", mask_email_for_log(email), mask_email_for_log(token_record["email"]))
+        return False, "email_mismatch"
+    if now_utc() > token_record["expires_at"]:
+        print("APP EMAIL OTP EXPIRED")
+        return False, "expired"
+    actual = email_otp_digest(email, otp)
+    print("APP EMAIL OTP VERIFY EMAIL:", email)
+    print("APP EMAIL OTP VERIFY LENGTH:", len(otp))
+    if hmac.compare_digest(token_record["digest"], actual):
+        print("APP EMAIL OTP VERIFICATION SUCCESS")
+        return True, None
+    print("APP EMAIL OTP VERIFICATION FAILURE: invalid")
+    return False, "invalid"
+
+def signup_payload():
+    data = request.get_json(silent=True) or {}
+    data["email"] = normalize_email(data.get("email"))
+    data["name"] = (data.get("name") or data.get("full_name") or "").strip()
+    data["full_name"] = (data.get("full_name") or data.get("name") or "").strip()
+    data["phone"] = (data.get("phone") or "").strip()
+    data["password"] = data.get("password") or ""
+    data["account_type"] = normalize_account_type(data.get("account_type"))
+    data["company_name"] = (data.get("company_name") or "").strip()
+    data["gstin"] = (data.get("gstin") or "").strip().upper()
+    data["business_address"] = (data.get("business_address") or "").strip()
+    return data
+
+def normalize_email_otp(value):
+    return str(value or "").strip()
+
+def mask_email_for_log(email):
+    email = normalize_email(email)
+    if "@" not in email:
+        return email or "(blank)"
+    name, domain = email.split("@", 1)
+    if len(name) <= 2:
+        masked_name = name[:1] + "*"
+    else:
+        masked_name = name[:2] + "***" + name[-1:]
+    return f"{masked_name}@{domain}"
+
+def validate_signup_payload(data, require_otp=False):
+    name = data.get("name") or data.get("full_name")
+    if not name or not data.get("email") or not data.get("password"):
+        return "Name, email and password are required."
+    if require_otp and not (data.get("otp") or "").strip():
+        return "Email OTP is required."
+    if require_otp and not re.fullmatch(rf"\d{{{EMAIL_OTP_LENGTH}}}", data.get("otp") or ""):
+        return INVALID_EMAIL_OTP_MESSAGE
+    if len(data.get("password") or "") < 6:
+        return "Password must be at least 6 characters."
+    if data.get("account_type") == "B2B":
+        if not data.get("company_name"):
+            return "Business Name is required for business accounts."
+        if data.get("gstin") and not re.match(GSTIN_REGEX, data["gstin"]):
+            return "Invalid GST format. Please enter a valid 15-character GSTIN."
+    return None
+
+def create_or_update_verified_user(db, auth_user, data):
+    email = data["email"]
+    account_type = data["account_type"]
+    role = "business" if account_type == "B2B" else "customer"
+    full_name = data.get("full_name") or data.get("name") or email.split("@", 1)[0]
+    phone = data.get("phone") or None
+    auth_id = auth_user_id(auth_user)
+
+    existing = db.query(UserModel).filter_by(email=email).first()
+    if existing and existing.email_verified:
+        return None, "This email already has an account."
+    if phone:
+        phone_user = db.query(UserModel).filter(UserModel.phone == phone).first()
+        if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
+            return None, "This phone number is already registered."
+
+    user = existing
+    if not user:
+        user = UserModel(id=auth_id, email=email, created_at=getattr(auth_user, "created_at", now_utc()))
+        db.add(user)
+    elif auth_id and str_id(user.id) != str_id(auth_id):
+        old_id = user.id
+        profile = db.query(BusinessProfileModel).filter_by(id=old_id).first()
+        if profile:
+            profile.id = auth_id
+        user.id = auth_id
+
+    user.name = full_name
+    user.full_name = full_name
+    user.phone = phone
+    user.password_hash = None
+    user.account_type = account_type
+    user.role = role
+    user.company_name = data.get("company_name") if account_type == "B2B" else None
+    user.gstin = data.get("gstin") if account_type == "B2B" else None
+    user.is_admin = False
+    user.email_verified = True
+    user.phone_verified = False
+    user.status = "Pending" if account_type == "B2B" else "Active"
+    user.updated_at = now_utc()
+    db.flush()
+
+    if account_type == "B2B":
+        business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
+        if not business:
+            business = BusinessProfileModel(id=user.id)
+            db.add(business)
+        business.business_name = data.get("company_name")
+        business.business_address = data.get("business_address") or ""
+        business.contact_number = phone or ""
+        business.gst_number = data.get("gstin") or ""
+        business.approval_status = "Pending"
+        business.updated_at = now_utc()
+
+    return user, None
+
+@app.post("/api/auth/send-email-otp")
+def api_send_email_otp():
+    if not supabase:
+        print("SEND EMAIL OTP ERROR: Supabase is not configured.")
+        return api_error("missing Supabase env vars", 500)
+
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    print("SEND EMAIL OTP REQUEST EMAIL:", email or "(missing)")
+    if not email:
+        print("SEND EMAIL OTP ERROR: missing email.")
+        return api_error("Email is required.", 400)
+
+    db = DBSession()
+    try:
+        existing = db.query(UserModel).filter_by(email=email).first()
+        if existing and existing.email_verified:
+            print("SEND EMAIL OTP ERROR: email already has a verified account.")
+            return api_error("This email already has an account.", 400)
+    finally:
+        db.close()
+
+    print("APP EMAIL OTP SEND EMAIL:", email)
+    otp_token = send_app_email_otp(email)
+    if not otp_token:
+        print("APP EMAIL OTP SEND ERROR: SMTP send failed.")
+        return api_error("Could not send email OTP. Please check SMTP settings.", 400)
+    print("APP EMAIL OTP SEND RESULT: success")
+    email_otp_last_sent[email] = now_utc()
+    return api_ok({"message": "OTP sent to your email.", "otp_token": otp_token})
+
+@app.post("/api/auth/verify-email-otp")
+def api_verify_email_otp():
+    if not supabase:
+        return api_error("missing Supabase env vars", 500)
+
+    data = signup_payload()
+    data["otp"] = normalize_email_otp(data.get("otp"))
+    verify_type = "email"
+    print("OTP VERIFY REQUEST")
+    print("OTP VERIFY EMAIL:", data.get("email"))
+    print("OTP VERIFY LENGTH:", len(data.get("otp") or ""))
+    print("VERIFY TYPE:", "app-email")
+    validation_error = validate_signup_payload(data, require_otp=True)
+    if validation_error:
+        print(f"OTP VERIFY VALIDATION FAILED: {validation_error}")
+        return api_error(validation_error, 400)
+
+    otp_ok, otp_error = verify_app_email_otp(data["email"], data["otp"], data.get("otp_token"))
+    if not otp_ok:
+        print(f"APP EMAIL OTP VERIFICATION FAILED: {otp_error}")
+        return api_error(INVALID_EMAIL_OTP_MESSAGE, 400)
+
+    print("APP EMAIL OTP VERIFIED")
+    metadata = {
+        "name": data.get("full_name") or data.get("name"),
+        "account_type": data["account_type"],
+        "role": "business" if data["account_type"] == "B2B" else "customer",
+    }
+    auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
+    if not auth_user:
+        print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
+        return api_error("Email verified, but auth setup failed. Please try again.", 400)
+
+    db = DBSession()
+    try:
+        user, user_error = create_or_update_verified_user(db, auth_user, data)
+        if user_error:
+            print(f"LOCAL USER SETUP AFTER OTP FAILED: {user_error}")
+            if user_error == "This email already has an account.":
+                existing_user = db.query(UserModel).filter_by(email=data["email"]).first()
+                db.rollback()
+                return api_ok({
+                    "message": "Email already verified. Please login.",
+                    "user": public_user(existing_user),
+                })
+            db.rollback()
+            return api_ok({
+                "message": "Account created. Please login.",
+                "profile_warning": user_error,
+            }, 201)
+        db.commit()
+        db.refresh(user)
+        message = (
+            "Business account created. Phone/GST verification and admin approval are pending."
+            if data["account_type"] == "B2B"
+            else "Email verified. Account created successfully. Please login."
+        )
+        return api_ok({"message": message, "user": public_user(user)}, 201)
+    except Exception as exc:
+        db.rollback()
+        print(f"LOCAL USER SETUP EXCEPTION AFTER AUTH SUCCESS: {exc}")
+        if isinstance(exc, IntegrityError):
+            error_text = str(getattr(exc, "orig", exc)).lower()
+            if "phone" in error_text:
+                return api_ok({
+                    "message": "Account created. Please login.",
+                    "profile_warning": "This phone number is already registered.",
+                }, 201)
+            if "email" in error_text:
+                return api_ok({
+                    "message": "Email already verified. Please login.",
+                })
+        return api_ok({
+            "message": "Account created. Please login.",
+            "profile_warning": str(exc),
+        }, 201)
+    finally:
+        db.close()
 
 @app.post("/api/auth/send-phone-otp")
 def api_send_phone_otp():
@@ -1180,108 +1803,125 @@ def api_send_phone_otp():
 
 @app.post("/api/auth/signup")
 def api_signup_compat():
-    data       = request.get_json(silent=True) or {}
-    name       = (data.get("name") or "").strip()
-    email      = normalize_email(data.get("email"))
-    phone      = (data.get("phone") or "").strip()
-    password   = data.get("password") or ""
-    account_type = normalize_account_type(data.get("account_type"))
-    company_name = (data.get("company_name") or "").strip()
-    gstin = (data.get("gstin") or "").strip()
+    if not supabase:
+        return api_error("missing Supabase env vars", 500)
 
-    business_address = (data.get("business_address") or "").strip()
+    data = signup_payload()
+    validation_error = validate_signup_payload(data)
+    if validation_error:
+        return api_error(validation_error, 400)
 
-    if not name or not email or not password:
-        return api_error("Name, email and password are required.")
-    if len(password) < 6:
-        return api_error("Password must be at least 6 characters.")
-    if account_type == "B2B":
-        if not company_name:
-            return api_error("Business Name is required for business accounts.")
-        if gstin and not re.match(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$", gstin):
-            return api_error("Invalid GST format. Please enter a valid 15-character GSTIN.")
+    last_sent = email_otp_last_sent.get(data["email"])
+    if last_sent:
+        elapsed = (now_utc() - last_sent).total_seconds()
+        if elapsed < EMAIL_OTP_COOLDOWN_SECONDS:
+            remaining = max(1, int(EMAIL_OTP_COOLDOWN_SECONDS - elapsed))
+            return api_ok({
+                "message": f"OTP already sent. Please wait {remaining} seconds before requesting another.",
+                "requires_email_otp": True,
+                "cooldown_seconds": remaining,
+                "user": None,
+                "redirect_url": None,
+            })
 
     db = DBSession()
     try:
-        if db.query(UserModel).filter_by(email=email).first():
-            return api_error("This email already has an account.")
-        if phone and db.query(UserModel).filter_by(phone=phone).first():
-            return api_error("This phone number is already registered.")
-
-        auth_user, auth_error = supabase_auth_signup(email, password, name, account_type)
-        if supabase and auth_error and "already" not in str(auth_error).lower():
-            return api_error("Supabase auth is unavailable. Please try again shortly.", 503)
-        user_id = getattr(auth_user, "id", None)
-
-        user = UserModel(
-            id             = user_id if user_id else uuid.uuid4(),
-            email          = email,
-            phone          = phone or None,
-            password_hash  = generate_password_hash(password),
-            name           = name,
-            account_type   = account_type,
-            company_name   = company_name if account_type == "B2B" else None,
-            gstin          = gstin if account_type == "B2B" else None,
-            email_verified = False,
-            phone_verified = bool(phone) and account_type == "B2B",
-            last_login     = now_utc(),
-        )
-        db.add(user)
-        if account_type == "B2B":
-            business = BusinessProfileModel(
-                id               = user.id,
-                business_name    = company_name,
-                business_address = business_address or "",
-                contact_number   = phone or "",
-                gst_number       = gstin or "",
-                approval_status  = "Approved"
-            )
-            db.add(business)
-        db.commit()
-        db.refresh(user)
-        session_login_for(user)
-        return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)}, 201)
+        existing = db.query(UserModel).filter_by(email=data["email"]).first()
+        if existing and existing.email_verified:
+            return api_error("This email already has an account.", 400)
+        if data["phone"]:
+            phone_user = db.query(UserModel).filter_by(phone=data["phone"]).first()
+            if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
+                return api_error("This phone number is already registered.", 400)
     except Exception as e:
-        db.rollback()
         return api_error(f"Error during signup: {str(e)}", 409)
     finally:
         db.close()
+
+    print("APP SIGNUP EMAIL OTP SEND EMAIL:", data["email"])
+    otp_token = send_app_email_otp(data["email"])
+    if not otp_token:
+        print("APP SIGNUP EMAIL OTP SEND ERROR: SMTP send failed.")
+        return api_error("Could not send email OTP. Please check SMTP settings.", 400)
+    email_otp_last_sent[data["email"]] = now_utc()
+    return api_ok({
+        "message": "OTP sent to your email.",
+        "requires_email_otp": True,
+        "otp_token": otp_token,
+        "user": None,
+        "redirect_url": None,
+    })
 
 
 @app.post("/api/auth/login")
 def api_login_direct():
     """Password login for customer and business accounts."""
+    if not supabase:
+        return api_error("missing Supabase env vars", 500)
+
     data     = request.get_json(silent=True) or {}
     email    = normalize_email(data.get("email"))
     password = data.get("password") or ""
     requested_type = data.get("account_type")
+    
+    if not email or not password:
+        return api_error("Email and password are required.", 400)
+
     db = DBSession()
     try:
-        auth_user, _auth_error = supabase_auth_login(email, password)
-        user = db.query(UserModel).filter_by(email=email).first()
-        if not user:
-            if not auth_user:
+        try:
+            res = supabase.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            auth_user = res.user
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "invalid" in exc_str or "credentials" in exc_str:
                 return api_error("Invalid email or password.", 401)
-            account_type = supabase_account_type(auth_user, requested_type or "B2C")
-            metadata = supabase_user_metadata(auth_user)
+            return api_error(f"Supabase Auth failed: {str(exc)}", 401)
+
+        if not auth_user:
+            return api_error("Invalid email or password.", 401)
+
+        user = db.query(UserModel).filter_by(id=auth_user.id).first()
+        if not user:
+            user = db.query(UserModel).filter_by(email=email).first()
+            if user:
+                user.id = auth_user.id
+                db.flush()
+
+        email_verified = bool(getattr(auth_user, "email_confirmed_at", None))
+        account_type = supabase_account_type(auth_user, requested_type or "B2C")
+        role = "business" if account_type == "B2B" else "customer"
+
+        if not user:
             user = UserModel(
-                id=getattr(auth_user, "id", None) or uuid.uuid4(),
+                id=auth_user.id,
                 email=email,
-                password_hash=generate_password_hash(password),
-                name=metadata.get("name") or email.split("@", 1)[0],
+                phone=auth_user.phone or None,
+                password_hash=None,
+                name=email.split("@", 1)[0],
+                full_name=email.split("@", 1)[0],
                 account_type=account_type,
-                email_verified=bool(getattr(auth_user, "email_confirmed_at", None)),
+                role=role,
+                is_admin=False,
+                email_verified=email_verified,
                 status="Active",
+                created_at=getattr(auth_user, "created_at", now_utc()),
             )
             db.add(user)
             db.flush()
-            
-        if not auth_user and not check_password_hash(user.password_hash or "", password):
-            return api_error("Invalid email or password.", 401)
+        else:
+            user.email_verified = email_verified
+            if not user.role:
+                user.role = role
+            user.password_hash = None
 
-        if not user.account_type:
-            user.account_type = supabase_account_type(auth_user, requested_type or "B2C")
-        
+        if not user.email_verified and not getattr(user, "is_admin", False):
+            db.rollback()
+            return api_error("Please verify your email before logging in.", 403)
+
         user.last_login = now_utc()
         db.commit()
         db.refresh(user)
@@ -1290,7 +1930,7 @@ def api_login_direct():
     except Exception as exc:
         db.rollback()
         print(f"Login failed unexpectedly: {exc}")
-        return api_error("Login is temporarily unavailable. Please try again.", 503)
+        return api_error(f"Login failed: {str(exc)}", 500)
     finally:
         db.close()
 
@@ -1301,7 +1941,7 @@ def api_logout():
         try:
             supabase.auth.sign_out()
         except Exception as exc:
-            print(f"Supabase logout skipped: {exc}")
+            print(f"Supabase logout failed: {exc}")
     session.pop("user_id", None)
     session.pop("admin_logged_in", None)
     return api_ok()
@@ -1363,20 +2003,35 @@ def api_change_password():
         return api_error("Password must be at least 6 characters.")
     if new_password != confirm_password:
         return api_error("New passwords do not match.")
-    if not check_password_hash(user.password_hash, current_password):
-        return api_error("Current password is incorrect.", 401)
+    
+    if user.password_hash:
+        if not check_password_hash(user.password_hash, current_password):
+            return api_error("Current password is incorrect.", 401)
+    else:
+        if not supabase:
+            return api_error("missing Supabase env vars", 500)
+        try:
+            supabase.auth.sign_in_with_password({"email": user.email, "password": current_password})
+        except Exception:
+            return api_error("Current password is incorrect.", 401)
 
-    db = DBSession()
-    try:
-        row = db.query(UserModel).filter_by(id=user.id).first()
-        if not row:
-            return api_error("User not found.", 404)
-        row.password_hash = generate_password_hash(new_password)
-        row.updated_at = now_utc()
-        db.commit()
-        return api_ok({"message": "Password changed."})
-    finally:
-        db.close()
+    if not user.password_hash:
+        try:
+            supabase.auth.update_user({"password": new_password})
+        except Exception as exc:
+            return api_error(f"Failed to change password: {str(exc)}", 400)
+    else:
+        db = DBSession()
+        try:
+            row = db.query(UserModel).filter_by(id=user.id).first()
+            if row:
+                row.password_hash = generate_password_hash(new_password)
+                row.updated_at = now_utc()
+                db.commit()
+        finally:
+            db.close()
+
+    return api_ok({"message": "Password changed."})
 
 
 @app.delete("/api/auth/me")
@@ -1388,8 +2043,17 @@ def api_delete_me():
 
     if confirm != "DELETE":
         return api_error("Type DELETE to confirm account deletion.")
-    if not check_password_hash(user.password_hash, password):
-        return api_error("Password is incorrect.", 401)
+
+    if user.password_hash:
+        if not check_password_hash(user.password_hash, password):
+            return api_error("Password is incorrect.", 401)
+    else:
+        if not supabase:
+            return api_error("missing Supabase env vars", 500)
+        try:
+            supabase.auth.sign_in_with_password({"email": user.email, "password": password})
+        except Exception:
+            return api_error("Password is incorrect.", 401)
 
     db = DBSession()
     try:
@@ -1397,6 +2061,11 @@ def api_delete_me():
         if row:
             db.delete(row)
             db.commit()
+
+        if not user.password_hash and supabase:
+            if not supabase_delete_auth_user(user.id):
+                print(f"Failed to delete user {user.id} from Supabase Auth")
+
         session.pop("user_id", None)
         return api_ok({"message": "Account deleted."})
     finally:
@@ -1493,7 +2162,7 @@ def api_create_community_post():
     data    = request.get_json(silent=True) or {}
     title   = (data.get("title") or "").strip()
     content = (data.get("content") or "").strip()
-    category = (data.get("category") or "General").strip()
+    category = (data.get("category") or "Need Eyes").strip()
     if not title or not content:
         return api_error("Title and content are required.")
     
@@ -1545,6 +2214,25 @@ def api_like_community_post(post_id):
     finally:
         db.close()
 
+@app.delete("/api/community/posts/<post_id>")
+def api_delete_community_post(post_id):
+    db = DBSession()
+    try:
+        post = db.query(CommunityPostModel).filter_by(id=post_id).first()
+        if not post:
+            return api_error("Post not found.", 404)
+        if not can_delete_community_item(post):
+            return api_error("Only the author or an admin can delete this post.", 403)
+
+        replies = db.query(CommunityReplyModel).filter_by(post_id=post.id).all()
+        for reply in replies:
+            db.delete(reply)
+        db.delete(post)
+        db.commit()
+        return api_ok({"message": "Post deleted."})
+    finally:
+        db.close()
+
 @app.get("/api/community/posts/<post_id>/replies")
 def api_get_community_replies(post_id):
     db = DBSession()
@@ -1584,6 +2272,23 @@ def api_create_community_reply(post_id):
         db.commit()
         db.refresh(reply)
         return api_ok({"reply": reply_to_dict(reply)}, 201)
+    finally:
+        db.close()
+
+@app.delete("/api/community/replies/<reply_id>")
+def api_delete_community_reply(reply_id):
+    db = DBSession()
+    try:
+        reply = db.query(CommunityReplyModel).filter_by(id=reply_id).first()
+        if not reply:
+            return api_error("Reply not found.", 404)
+        if not can_delete_community_item(reply):
+            return api_error("Only the author or an admin can delete this reply.", 403)
+
+        post_id = str_id(reply.post_id)
+        db.delete(reply)
+        db.commit()
+        return api_ok({"message": "Reply deleted.", "post_id": post_id})
     finally:
         db.close()
 
@@ -1710,6 +2415,7 @@ def api_admin_login():
     password = data.get("password") or ""
     if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
         session["admin_logged_in"] = True
+        session["admin_role"] = "owner_admin"
         return api_ok()
     return api_error("Invalid admin credentials.", 401)
 
@@ -1717,6 +2423,8 @@ def api_admin_login():
 @app.post("/api/admin/logout")
 def api_admin_logout():
     session.pop("admin_logged_in", None)
+    session.pop("admin_role", None)
+    session.pop("owner_logged_in", None)
     return api_ok()
 
 @app.post("/api/owner/login")
@@ -1726,12 +2434,15 @@ def api_owner_login():
     password = data.get("password") or ""
     if email == OWNER_EMAIL and password == OWNER_PASSWORD:
         session["owner_logged_in"] = True
+        session["owner_auth_version"] = owner_auth_version()
+        session["admin_logged_in"] = True
+        session["admin_role"] = "owner_admin"
         return api_ok({"redirect_url": url_for("owner_page")})
     return api_error("Invalid owner credentials.", 401)
 
 @app.post("/api/owner/logout")
 def api_owner_logout():
-    session.pop("owner_logged_in", None)
+    clear_owner_session()
     return api_ok()
 
 @app.get("/api/owner/overview")
@@ -1749,6 +2460,7 @@ def api_admin_summary():
         real_products  = db.query(ProductModel).filter_by(is_sample=False).count()
         total_orders   = db.query(OrderModel).count()
         pending_orders = db.query(OrderModel).filter_by(status="Pending").count()
+        pending_businesses = db.query(BusinessProfileModel).filter_by(approval_status="Pending").count()
         approved       = db.query(OrderModel).filter_by(status="Approved").all()
         revenue        = sum(float((o.totals or {}).get("total") or 0) for o in approved)
         smtp_ok, smtp_missing = smtp_config_status()
@@ -1758,8 +2470,8 @@ def api_admin_summary():
                 "products":         real_products,
                 "orders":           total_orders,
                 "pending_orders":   pending_orders,
+                "pending_approvals": pending_orders + pending_businesses,
                 "approved_revenue": money(revenue),
-                "sample_mode":      real_products == 0,
             },
             "store_mode":     DATABASE_LABEL,
             "smtp_configured": smtp_ok,
@@ -1774,11 +2486,29 @@ def api_admin_products():
     require_admin()
     db = DBSession()
     try:
-        products = db.query(ProductModel).order_by(ProductModel.created_at.desc()).all()
+        products = db.query(ProductModel).filter_by(is_sample=False).order_by(ProductModel.created_at.desc()).all()
         return api_ok({
             "products":   [product_to_dict(p) for p in products],
             "next_image": next_product_image_path(),
         })
+    finally:
+        db.close()
+
+@app.get("/api/admin/products/lookup")
+def api_admin_lookup_product():
+    require_admin()
+    code = (request.args.get("code") or "").strip()
+    if not code:
+        return api_error("Enter a barcode or SKU to scan.")
+    db = DBSession()
+    try:
+        product = (db.query(ProductModel)
+                     .filter(ProductModel.is_sample == False)
+                     .filter((ProductModel.sku == code) | (ProductModel.model == code))
+                     .first())
+        if not product:
+            return api_ok({"found": False, "code": code})
+        return api_ok({"found": True, "product": product_to_dict(product)})
     finally:
         db.close()
 
@@ -1931,17 +2661,17 @@ def api_admin_update_business(business_id):
     db = DBSession()
     try:
         business = db.query(BusinessProfileModel).filter_by(id=business_id).first()
-        if not business:
+        user = db.query(UserModel).filter_by(id=business_id).first()
+        if not business and not user:
             return api_error("Business not found.", 404)
         
         data = request.get_json(silent=True) or {}
         status = data.get("status")
         if status in {"Pending", "Approved", "Rejected"}:
-            business.approval_status = status
+            if business:
+                business.approval_status = status
             db.commit()
             
-            # Optionally sync back to UserModel if you want
-            user = db.query(UserModel).filter_by(id=business.id).first()
             if user:
                 user.status = "Active" if status == "Approved" else status
                 db.commit()
@@ -2020,11 +2750,30 @@ def api_admin_update_settings():
     try:
         row     = db.query(SettingsModel).filter_by(key="store").first()
         current = row.value if row else {}
+        section_fields = {
+            "store_profile": ("tagline", "marketplace_description", "default_currency"),
+            "business_details": ("legal_name", "gstin", "business_address", "business_phone"),
+            "payout_info": ("payout_method", "account_label", "settlement_cycle"),
+            "shipping_preferences": ("dispatch_window", "shipping_regions", "default_carrier"),
+            "approval_preferences": ("auto_submit_products", "require_owner_review", "allow_backorders"),
+            "notification_preferences": ("order_email", "stock_alerts", "community_replies"),
+            "marketplace_visibility": ("public_profile", "show_stock_count", "accept_bulk_requests"),
+            "support_contact": ("support_name", "support_phone", "support_hours"),
+        }
+        section_updates = {}
+        for section, fields in section_fields.items():
+            existing = current.get(section) if isinstance(current.get(section), dict) else {}
+            section_updates[section] = {**existing}
+            for field in fields:
+                key = f"{section}.{field}"
+                if key in data:
+                    section_updates[section][field] = str(data.get(key) or "").strip()
         updated = {
             **current,
             "store_name":   (data.get("store_name") or current.get("store_name") or "Microchip Cart").strip(),
             "support_email": normalize_email(data.get("support_email") or current.get("support_email") or ADMIN_NOTIFICATION_EMAIL),
             "announcement": (data.get("announcement") or current.get("announcement") or "").strip(),
+            **section_updates,
             "currency":     "INR",
             "updated_at":   now_iso(),
         }

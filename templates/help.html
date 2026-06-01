@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Help | {{ settings.store_name or "Microchip Cart" }}</title>
+    <meta name="description" content="Help topics for browsing, search, cart, wishlist, checkout, orders, returns, accounts, distributors, and community features on Microchip Cart.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=cyber-blue-marketplace">
+    <link rel="stylesheet" href="{{ url_for('static', filename='footer/footer.css') }}?v=footer-help-v1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='help/help.css') }}?v=help-page-v1">
+  </head>
+  <body data-page="{{ page_mode or 'help' }}">
+    <header class="site-header amazon-header help-site-header">
+      <div class="header-main-row">
+        <a class="brand" href="/" aria-label="Microchip Cart home">
+          <span class="chip-logo-icon" aria-hidden="true"></span>
+          <div class="brand-text">
+            <strong id="storeName"><span>MicroChip</span><span>Cart</span></strong>
+          </div>
+        </a>
+        <nav class="help-nav" aria-label="Help navigation">
+          <a href="/">Store</a>
+          <a href="/products">Products</a>
+          <a href="/community">Community</a>
+          <a href="/help" aria-current="page">Help</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="help-page-shell">
+      <section class="help-hero" id="about">
+        <p class="eyebrow">MicroChip Cart Help</p>
+        <h1 class="section-title">How the whole app works</h1>
+        <p>Find quick guidance for browsing products, searching parts, using cart and wishlist, checking out, managing orders, returns, accounts, distributor tools, and community signals.</p>
+        <label class="help-search-label">Search help topics
+          <input id="helpSearchInput" type="search" placeholder="Try cart, returns, distributor, wishlist, checkout...">
+        </label>
+      </section>
+
+      <section class="help-topic-grid" id="helpTopicGrid" aria-live="polite">
+        <article class="help-topic-card" data-help-topic="home homepage store">
+          <h2>Home page</h2>
+          <p>The home page introduces featured products, marketplace categories, helpful store prompts, and the community signal area.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="search product sku brand model">
+          <h2>Product search</h2>
+          <p>Use search to find parts by product name, SKU, model, brand, module type, or category. Suggestions help narrow results quickly.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="categories filters category">
+          <h2>Categories</h2>
+          <p>Category filters help you browse microcontrollers, wireless modules, sensors, ICs, and other component groups.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="product detail modal specs price stock">
+          <h2>Product detail page</h2>
+          <p>Open a product to review images, specs, pricing, stock, ratings, warranty, lead time, and useful technical details.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="add cart checkout quantity">
+          <h2>Add to cart</h2>
+          <p>Add components to cart from product cards or details, then review totals, GST, shipping, and checkout details.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="wishlist saved products heart">
+          <h2>Wishlist</h2>
+          <p>Save parts for later comparison or future orders. Wishlist is available from the header and account areas.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="cart drawer totals gst shipping">
+          <h2>Cart</h2>
+          <p>The cart drawer shows selected components, totals, GST, shipping, and the Place Order action.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="checkout address payment order">
+          <h2>Checkout</h2>
+          <p>Checkout collects contact, shipping, account type, company, GST, and payment preference details before order creation.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="orders history current returns refunds">
+          <h2>Orders</h2>
+          <p>Signed-in users can view current orders and order history from the account or orders area.</p>
+        </article>
+        <article class="help-topic-card" id="returns" data-help-topic="returns replacement refund damaged wrong item warranty">
+          <h2>Returns</h2>
+          <p>For returns, keep invoices, labels, packaging, and product details. Report damaged, incorrect, missing, or faulty items quickly for review.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="user account profile password settings privacy theme logout">
+          <h2>User account</h2>
+          <p>User accounts support order tracking, wishlist access, profile updates, password changes, theme preferences, and account safety settings.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="distributor business b2b gst invoice recommendations availability">
+          <h2>Distributor account</h2>
+          <p>Distributor and business accounts support GST information, invoice workflows, helpful recommendations, availability updates, and business order handling.</p>
+        </article>
+        <article class="help-topic-card" data-help-topic="community hub live signals chat projects help">
+          <h2>Community hub and live signals</h2>
+          <p>The Community Hub lets users and distributors share quick signals, chat locally, like projects, and exchange part recommendations.</p>
+        </article>
+      </section>
+      <p class="help-empty hidden" id="helpEmpty">No help topics matched your search.</p>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <h2>Get to know us</h2>
+        <div class="footer-about">
+          <a class="footer-about-trigger" href="/help#about">About MicroChip Cart</a>
+          <div class="footer-about-popover" role="tooltip">
+            <strong>MicroChip Cart</strong>
+            <p>A B2B and B2C electronic components marketplace for microchips, modules, sensors, and embedded hardware.</p>
+            <ul>
+              <li>Browse products by category, brand, model, SKU, and product details.</li>
+              <li>Use search to find parts by name, module, SKU, brand, or category.</li>
+              <li>Add items to cart, save products to wishlist, and checkout with order details.</li>
+              <li>User accounts support orders, wishlist, profile settings, security, and theme preferences.</li>
+              <li>Distributor accounts support business buying, GST details, invoices, recommendations, and availability updates.</li>
+              <li>Returns, order history, community signals, and help tools are available from the store experience.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2>Connect with us</h2>
+        <p>Email ID - microchipcaty025@gmail.com</p>
+        <p>Phone number - 9175536112</p>
+        <p>Address - Sr No 222/1 bldg No 8 1st, to 5th Raheja Woods, Yerwada, Pune City, Pune - 411006, Maharashtra</p>
+      </div>
+      <div>
+        <h2>Let us help you</h2>
+        <a href="/help#returns">Returns</a>
+        <a href="/#account-settings">Your account</a>
+        <a href="/help">Help</a>
+      </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='help/help.js') }}?v=help-page-v1"></script>
+  </body>
+</html>

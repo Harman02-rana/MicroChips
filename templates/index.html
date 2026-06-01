@@ -6,6 +6,7 @@
     <title>{{ settings.store_name or "Microchip Cart" }}</title>
     <meta name="description" content="Microchip Cart is a B2B and B2C ecommerce storefront for verified electronic components, order approvals, invoices, and distributor-ready workflows.">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=cyber-blue-marketplace">
+    <link rel="stylesheet" href="{{ url_for('static', filename='footer/footer.css') }}?v=footer-help-v1">
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
   </head>
@@ -321,9 +322,9 @@
         <aside class="marketplace-rail" aria-label="Marketplace highlights">
           <div class="popular-hero-panel" id="popularHeroPanel" aria-label="Most popular product"></div>
           <div class="hero-metrics" aria-label="Store highlights">
-            <span><strong id="heroProductCount">3</strong> products</span>
-            <span><strong>18%</strong> GST shown</span>
-            <span><strong>B2B</strong> invoices</span>
+            <span><strong>Fast</strong> delivery</span>
+            <span><strong>Trust</strong></span>
+            <span><strong>Reliable</strong> resources</span>
           </div>
         </aside>
       </section>
@@ -365,22 +366,22 @@
 
       <section class="community-reviews community-live-hub" aria-labelledby="communityReviewsTitle">
         <div class="community-left-panel">
-          <p class="eyebrow">Community Hub</p>
-          <h2 class="section-title" id="communityReviewsTitle">Live Builder Talk</h2>
-          <p class="subtext">Ask for part help, share build wins, warn others about tricky components, or drop a quick bench note.</p>
+          <p class="eyebrow">Live Circuit Hub</p>
+          <h2 class="section-title" id="communityReviewsTitle">Signal Board</h2>
+          <p class="subtext">A live stream for tiny discoveries: a part that saved time, a bench trick, a build drop, or a quick ask before ordering.</p>
           <div class="community-pulse" aria-label="Community activity">
-            <span><strong>Live</strong> thoughts</span>
-            <span><strong>Build</strong> notes</span>
-            <span><strong>Part</strong> help</span>
+            <span><strong>Signal</strong> live</span>
+            <span><strong>Bench</strong> verified</span>
+            <span><strong>Parts</strong> decoded</span>
           </div>
-          <div class="community-categories" id="communityCategories" aria-label="Categories">
-            <button type="button" class="category-tab active" data-category="All">All Topics</button>
-            <button type="button" class="category-tab" data-category="Problem">Problems</button>
-            <button type="button" class="category-tab" data-category="Experience">Build Stories</button>
-            <button type="button" class="category-tab" data-category="Project">Projects</button>
-            <button type="button" class="category-tab" data-category="General">General</button>
+          <div class="community-categories" id="communityCategories" aria-label="Signal lanes">
+            <button type="button" class="category-tab active" data-category="All" data-help="Everything shared by the community.">All Signals</button>
+            <button type="button" class="category-tab" data-category="Need Eyes" data-help="Ask others to check an issue, part choice, circuit, or idea.">Need Eyes</button>
+            <button type="button" class="category-tab" data-category="Bench Win" data-help="Share a fix, test result, or small success from your workbench.">Bench Wins</button>
+            <button type="button" class="category-tab" data-category="Part Hunt" data-help="Ask for help finding a component, replacement, or compatible module.">Part Hunts</button>
+            <button type="button" class="category-tab" data-category="Build Drop" data-help="Show a project, prototype, wiring setup, or finished build.">Build Drops</button>
           </div>
-          <button class="primary-btn start-post-btn" id="startPostBtn" type="button">Share a Thought</button>
+          <button class="primary-btn start-post-btn" id="startPostBtn" type="button">Send Signal</button>
         </div>
 
         <aside class="community-live-panel" aria-label="Live community thoughts">
@@ -393,23 +394,23 @@
           </header>
           <div class="post-form-card hidden" id="postFormCard">
             <header class="post-form-header">
-              <h3>Post to the live board</h3>
+              <h3>Send a signal</h3>
               <button class="icon-btn close-form-btn" id="closePostFormBtn" type="button">&times;</button>
             </header>
             <form class="community-post-form" id="communityPostForm">
               <div class="two-col">
                 <label>Your Name<input name="name" id="postAuthorName" placeholder="Enter your name" required></label>
-                <label>Category
+                <label>Signal Lane
                   <select name="category" required>
-                    <option value="General">General Discussion</option>
-                    <option value="Problem">Problem / Issue</option>
-                    <option value="Experience">Build Story</option>
-                    <option value="Project">Project Share</option>
+                    <option value="Need Eyes">Need Eyes</option>
+                    <option value="Bench Win">Bench Win</option>
+                    <option value="Part Hunt">Part Hunt</option>
+                    <option value="Build Drop">Build Drop</option>
                   </select>
                 </label>
               </div>
-              <label>Thought Title<input name="title" required placeholder="What are you building or debugging?"></label>
-              <label>Details<textarea name="content" rows="4" required placeholder="Share the part number, symptom, idea, or quick jugaad that helped..."></textarea></label>
+              <label>Signal Title<input name="title" required placeholder="What should other builders notice?"></label>
+              <label>Details<textarea name="content" rows="4" required placeholder="Drop the part number, symptom, bench trick, or small win..."></textarea></label>
               <aside class="thought-live-preview" aria-label="Live thought preview">
                 <p class="eyebrow">Live Preview</p>
                 <article class="post-card-board preview-post-card" id="thoughtLivePreview">
@@ -421,21 +422,21 @@
                         <small class="post-time">Live draft</small>
                       </div>
                     </div>
-                    <span class="category-badge badge-general" id="previewCategory">General</span>
+                    <span class="category-badge badge-eyes" id="previewCategory">Need Eyes</span>
                   </header>
                   <div class="post-body-board">
-                    <h3 class="post-title-board" id="previewTitle">Your thought title will appear here</h3>
+                    <h3 class="post-title-board" id="previewTitle">Your signal title will appear here</h3>
                     <p class="post-content-board" id="previewContent">Start typing details and the live community card will update here.</p>
                   </div>
                   <footer class="post-footer-board">
                     <span class="post-action-btn preview-action">&#9825; 0 Likes</span>
-                    <span class="post-action-btn preview-action">&#128172; 0 Comments</span>
+                    <span class="post-action-btn preview-action">&#128172; 0 Replies</span>
                   </footer>
                 </article>
               </aside>
               <div class="form-actions">
                 <p class="form-help login-notice" id="postLoginNotice">You are posting as a guest. <button type="button" class="text-link-btn" id="postFormLoginBtn">Log in</button> to post as a verified member.</p>
-                <button class="primary-btn" type="submit" id="submitPostBtn">Post Live</button>
+                <button class="primary-btn" type="submit" id="submitPostBtn">Post Signal</button>
               </div>
             </form>
           </div>
@@ -450,8 +451,21 @@
     <footer class="site-footer">
       <div>
         <h2>Get to know us</h2>
-        <a href="/">About MicrochipCart</a>
-        <p class="footer-desc">Microchip Cart is a premier B2B and B2C electronic components marketplace. We bridge the gap between engineers, hobbyists, and wholesale distributors by providing authentic, high-performance microchips, wireless modules, and embedded hardware with transparent technical specifications and streamlined distributor procurement workflows.</p>
+        <div class="footer-about">
+          <a class="footer-about-trigger" href="/help#about">About MicroChip Cart</a>
+          <div class="footer-about-popover" role="tooltip">
+            <strong>MicroChip Cart</strong>
+            <p>A B2B and B2C electronic components marketplace for microchips, modules, sensors, and embedded hardware.</p>
+            <ul>
+              <li>Browse products by category, brand, model, SKU, and product details.</li>
+              <li>Use search to find parts by name, module, SKU, brand, or category.</li>
+              <li>Add items to cart, save products to wishlist, and checkout with order details.</li>
+              <li>User accounts support orders, wishlist, profile settings, security, and theme preferences.</li>
+              <li>Distributor accounts support business buying, GST details, invoices, recommendations, and availability updates.</li>
+              <li>Returns, order history, community signals, and help tools are available from the store experience.</li>
+            </ul>
+          </div>
+        </div>
       </div>
       <div>
         <h2>Connect with us</h2>
@@ -461,9 +475,9 @@
       </div>
       <div>
         <h2>Let us help you</h2>
-        <button type="button" data-help-topic="returns">Returns</button>
-        <button type="button" data-help-topic="account">Your account</button>
-        <button type="button" data-help-topic="help">Help</button>
+        <a href="/help#returns">Returns</a>
+        <a href="/#account-settings">Your account</a>
+        <a href="/help">Help</a>
       </div>
     </footer>
 
@@ -512,6 +526,10 @@
         <input name="account_type" type="hidden" value="B2C">
         <label>Name<input name="name" required></label>
         <label>Email<input name="email" type="email" required></label>
+        <input name="otp_email" type="hidden">
+        <input name="otp_token" type="hidden">
+        <button class="secondary-btn" id="sendEmailOtpBtn" type="button">Send Email OTP</button>
+        <label>Email OTP<input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter the 6-digit email code" required></label>
         <label>Phone<input name="phone" inputmode="tel"></label>
         <div class="business-fields">
           <label>Company name<input name="company_name" autocomplete="organization"></label>
@@ -519,7 +537,7 @@
           <label>Business address<input name="business_address" placeholder="Registered business address"></label>
         </div>
         <label>Password<input name="password" type="password" minlength="6" required></label>
-        <button class="primary-btn" type="submit">Create account</button>
+        <button class="primary-btn" type="submit">Verify OTP / Create Account</button>
       </form>
     </dialog>
 
@@ -581,6 +599,9 @@
         <label>Pincode
           <input type="text" name="pincode" id="locationPincodeInput" placeholder="e.g., 411006" pattern="[0-9]{6}" maxlength="6" required>
         </label>
+        <label>City / District
+          <input type="text" name="city" id="locationCityInput" placeholder="Auto-filled from pincode">
+        </label>
         <label>State
           <select name="state" id="locationStateSelect" required>
             <option value="">Choose State...</option>
@@ -596,6 +617,7 @@
             <option value="Other">Other India Location</option>
           </select>
         </label>
+        <p class="form-help location-lookup-status" id="locationLookupStatus"></p>
         <button class="primary-btn" type="submit">Apply Location</button>
       </form>
     </dialog>
@@ -720,6 +742,6 @@
       </div>
     </section>
 
-    <script src="{{ url_for('static', filename='js/storefront.js') }}?v=cyber-blue-marketplace"></script>
+    <script src="{{ url_for('static', filename='js/storefront.js') }}?v=auth-success-fix-v1"></script>
   </body>
 </html>

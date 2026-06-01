@@ -19,8 +19,8 @@ Open:
 
 Default local admin:
 
-- Email: `admin@microchipcart.local`
-- Password: `Admin@12345`
+- Email: `microchipcaty025@gmail.com`
+- Password: `Micro#025`
 
 Default owner login uses `OWNER_EMAIL` / `OWNER_PASSWORD` when set, otherwise it falls back to the admin credentials.
 

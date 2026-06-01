@@ -167,9 +167,16 @@ function renderBusinesses() {
       <td>${escapeHtml(user.gstin || "-")}</td>
       <td>${escapeHtml(user.orders || 0)}</td>
       <td>${moneyLabel(user.spend || 0)}</td>
+      <td><span class="status ${escapeHtml(user.approval_status || user.status || "Pending")}">${escapeHtml(user.approval_status || user.status || "Pending")}</span></td>
       <td>${escapeHtml(user.last_login || "-")}</td>
+      <td>
+        <div class="row-actions">
+          ${(user.approval_status || user.status) !== "Approved" ? `<button type="button" data-owner-business-status="${escapeHtml(user.id)}" data-status="Approved">Approve</button>` : ""}
+          ${(user.approval_status || user.status) !== "Rejected" ? `<button type="button" class="danger-btn" data-owner-business-status="${escapeHtml(user.id)}" data-status="Rejected">Reject</button>` : ""}
+        </div>
+      </td>
     </tr>
-  `).join("") || `<tr><td colspan="6">No business distributors found.</td></tr>`;
+  `).join("") || `<tr><td colspan="8">No business distributors found.</td></tr>`;
 }
 
 function renderCommerce() {
@@ -203,7 +210,11 @@ function renderCommerce() {
       </ul>
       <div class="mini-row">
         <span>${escapeHtml(order.payment_method || "")} &middot; ${escapeHtml(order.payment_status || "")}</span>
-        <strong>${moneyLabel(order.totals?.total || 0)}</strong>
+        <div class="order-actions">
+          <strong>${moneyLabel(order.totals?.total || 0)}</strong>
+          <button type="button" data-owner-order-status="${escapeHtml(order.id)}" data-status="Approved">Approve</button>
+          <button type="button" class="danger-btn" data-owner-order-status="${escapeHtml(order.id)}" data-status="Rejected">Reject</button>
+        </div>
       </div>
     </article>
   `).join("") || `<p class="hint">No orders in this view.</p>`;
@@ -229,9 +240,15 @@ function renderProducts() {
         <td>${escapeHtml(row.units_sold || 0)}</td>
         <td>${moneyLabel(row.revenue || 0)}</td>
         <td>${escapeHtml(row.conversion || 0)}%</td>
+        <td><span class="status ${product.active ? "Approved" : "Rejected"}">${product.active ? "Active" : "Hidden"}</span></td>
+        <td>
+          <div class="row-actions">
+            <button type="button" data-owner-product-toggle="${escapeHtml(product.id)}">${product.active ? "Hide" : "Show"}</button>
+          </div>
+        </td>
       </tr>
     `;
-  }).join("") || `<tr><td colspan="7">No products yet.</td></tr>`;
+  }).join("") || `<tr><td colspan="9">No products yet.</td></tr>`;
 }
 
 function renderInsights() {
@@ -258,6 +275,20 @@ function renderInsights() {
   `).join("") || `<p class="hint">No activity yet.</p>`;
 }
 
+function renderSettings() {
+  const settings = ownerState.data.settings || {};
+  const form = $("#ownerSettingsForm");
+  if (!form) return;
+  form.store_name.value = settings.store_name || "Microchip Cart";
+  form.support_email.value = settings.support_email || "";
+  form.announcement.value = settings.announcement || "";
+  [...form.elements].forEach(input => {
+    if (!input.name || !input.name.includes(".")) return;
+    const [section, field] = input.name.split(".");
+    input.value = settings?.[section]?.[field] || "";
+  });
+}
+
 function renderAll() {
   renderOverview();
   renderCustomers();
@@ -265,6 +296,12 @@ function renderAll() {
   renderCommerce();
   renderProducts();
   renderInsights();
+  renderSettings();
+}
+
+async function reloadOwnerData() {
+  ownerState.data = await api("/api/owner/overview");
+  renderAll();
 }
 
 function bindEvents() {
@@ -286,6 +323,67 @@ function bindEvents() {
     ownerState.orderFilter = event.target.value;
     renderCommerce();
   });
+  $("#ownerBusinessesTable").addEventListener("click", async event => {
+    const button = event.target.closest("[data-owner-business-status]");
+    if (!button) return;
+    try {
+      await api(`/api/admin/businesses/${button.dataset.ownerBusinessStatus}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: button.dataset.status })
+      });
+      await reloadOwnerData();
+      toast(`Distributor ${button.dataset.status.toLowerCase()}`);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#ownerOrdersList").addEventListener("click", async event => {
+    const button = event.target.closest("[data-owner-order-status]");
+    if (!button) return;
+    const status = button.dataset.status;
+    const admin_notes = status === "Rejected" ? (prompt("Rejection reason (optional)", "") || "") : (prompt("Approval note (optional)", "") || "");
+    try {
+      await api(`/api/admin/orders/${button.dataset.ownerOrderStatus}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, admin_notes })
+      });
+      await reloadOwnerData();
+      toast(`Order ${status.toLowerCase()}`);
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#ownerProductsTable").addEventListener("click", async event => {
+    const button = event.target.closest("[data-owner-product-toggle]");
+    if (!button) return;
+    const product = ownerState.data.products.find(row => row.id === button.dataset.ownerProductToggle);
+    if (!product) return;
+    try {
+      await api(`/api/admin/products/${product.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: !product.active })
+      });
+      await reloadOwnerData();
+      toast(product.active ? "Product hidden" : "Product active");
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#ownerSettingsForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    try {
+      const data = await api("/api/admin/settings", {
+        method: "PUT",
+        body: JSON.stringify(body)
+      });
+      ownerState.data.settings = data.settings;
+      renderSettings();
+      toast("Company settings saved");
+    } catch (error) {
+      toast(error.message);
+    }
+  });
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/owner/logout", { method: "POST", body: "{}" });
     location.href = "/owner/login";
@@ -296,8 +394,7 @@ async function init() {
   initTheme();
   bindEvents();
   try {
-    ownerState.data = await api("/api/owner/overview");
-    renderAll();
+    await reloadOwnerData();
   } catch (error) {
     toast(error.message);
   }

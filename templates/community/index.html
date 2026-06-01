@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Community Hub | {{ settings.store_name or "Microchip Cart" }}</title>
+    <meta name="description" content="Community Hub for Microchip Cart users and distributors to share signals, projects, part updates, and recommendations.">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=cyber-blue-marketplace">
+    <link rel="stylesheet" href="{{ url_for('static', filename='footer/footer.css') }}?v=footer-help-v1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='community/community.css') }}?v=community-hub-v1">
+    <script src="https://unpkg.com/lucide@latest"></script>
+  </head>
+  <body data-page="{{ page_mode or 'community' }}" data-community-user='{{ user|tojson }}'>
+    <header class="site-header amazon-header community-site-header">
+      <div class="header-main-row">
+        <a class="brand" href="/" aria-label="Microchip Cart home">
+          <span class="chip-logo-icon" aria-hidden="true"></span>
+          <div class="brand-text">
+            <strong id="storeName"><span>MicroChip</span><span>Cart</span></strong>
+          </div>
+        </a>
+        <nav class="community-nav" aria-label="Community navigation">
+          <a href="/">Store</a>
+          <a href="/products">Products</a>
+          <a href="/community" aria-current="page">Community</a>
+          {% if user %}
+            <span class="community-account-pill">{{ user.name or user.email }} · {{ "Distributor" if user.account_type == "B2B" or user.role == "distributor" else "User" }}</span>
+          {% else %}
+            <a class="secondary-btn community-login-link" href="/#login">Sign in</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+
+    <main class="community-page-shell">
+      <section class="community-hub" aria-labelledby="communityHubTitle">
+        <div class="community-hub-intro">
+          <p class="eyebrow">Community Hub</p>
+          <h1 class="section-title" id="communityHubTitle">Live Signals for Builders</h1>
+          <p class="community-lede">Share quick part notes, availability updates, recommendations, and project wins with users and distributors.</p>
+          <div class="community-role-strip" aria-label="Participation types">
+            <span>User signals</span>
+            <span>Distributor updates</span>
+            <span>Project likes</span>
+          </div>
+        </div>
+
+        <section class="community-grid" aria-label="Community modules">
+          <section class="community-panel signal-composer-panel" aria-labelledby="sendSignalTitle">
+            <div class="community-panel-head">
+              <div>
+                <p class="eyebrow">Send Signal</p>
+                <h2 id="sendSignalTitle">Post a quick update</h2>
+              </div>
+              <span class="live-status"><span aria-hidden="true"></span>Local live</span>
+            </div>
+            <form class="send-signal-form" id="sendSignalForm">
+              <div class="two-col">
+                <label>Name<input name="author" id="signalAuthor" required></label>
+                <label>Type
+                  <select name="type" id="signalType">
+                    <option value="Need Eyes">Need Eyes</option>
+                    <option value="Part Available">Part Available</option>
+                    <option value="Recommendation">Recommendation</option>
+                    <option value="Build Win">Build Win</option>
+                  </select>
+                </label>
+              </div>
+              <label>Signal title<input name="title" id="signalTitle" required placeholder="ESP32-C3 stock spotted, regulator tip, build note..."></label>
+              <label>Details<textarea name="details" id="signalDetails" rows="4" required placeholder="Keep it useful and specific. Mention part number, stock, symptoms, or recommendation."></textarea></label>
+              <article class="signal-card signal-preview" aria-label="Signal preview">
+                <div class="signal-card-top">
+                  <span class="signal-type" id="previewType">Need Eyes</span>
+                  <small id="previewRole">Preview</small>
+                </div>
+                <h3 id="previewTitle">Your signal preview</h3>
+                <p id="previewDetails">Start typing and this preview will update before posting.</p>
+                <footer><span id="previewAuthor">You</span><span>0 replies</span></footer>
+              </article>
+              <button class="primary-btn" type="submit">Send Signal</button>
+            </form>
+          </section>
+
+          <section class="community-panel signal-feed-panel" aria-labelledby="signalFeedTitle">
+            <div class="community-panel-head">
+              <div>
+                <p class="eyebrow">Live Signals Feed</p>
+                <h2 id="signalFeedTitle">Latest from the bench</h2>
+              </div>
+            </div>
+            <div class="signal-feed" id="signalFeed" aria-live="polite"></div>
+          </section>
+
+          <section class="community-panel live-chat-panel" aria-labelledby="liveChatTitle">
+            <div class="community-panel-head">
+              <div>
+                <p class="eyebrow">Live Chat</p>
+                <h2 id="liveChatTitle">Quick replies</h2>
+              </div>
+            </div>
+            <div class="live-chat-box" id="liveChatMessages" aria-live="polite"></div>
+            <form class="live-chat-form" id="liveChatForm">
+              <input name="message" required autocomplete="off" placeholder="Ask a part question or reply with availability...">
+              <button class="primary-btn" type="submit">Send</button>
+            </form>
+          </section>
+
+          <section class="community-panel project-showcase-panel" aria-labelledby="projectShowcaseTitle">
+            <div class="community-panel-head">
+              <div>
+                <p class="eyebrow">Recent Projects</p>
+                <h2 id="projectShowcaseTitle">Community builds</h2>
+              </div>
+            </div>
+            <div class="project-showcase" id="projectShowcase"></div>
+          </section>
+
+          <aside class="community-panel quick-links-panel" aria-labelledby="quickLinksTitle">
+            <p class="eyebrow">Quick Links</p>
+            <h2 id="quickLinksTitle">Jump back anytime</h2>
+            <div class="community-quick-links">
+              <a href="/products">Browse components</a>
+              <a href="/#communityReviewsTitle">Homepage board</a>
+              <a href="/admin">Distributor admin</a>
+              <a href="/#help">Support</a>
+            </div>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div>
+        <h2>Get to know us</h2>
+        <div class="footer-about">
+          <a class="footer-about-trigger" href="/help#about">About MicroChip Cart</a>
+          <div class="footer-about-popover" role="tooltip">
+            <strong>MicroChip Cart</strong>
+            <p>A B2B and B2C electronic components marketplace for microchips, modules, sensors, and embedded hardware.</p>
+            <ul>
+              <li>Browse products by category, brand, model, SKU, and product details.</li>
+              <li>Use search to find parts by name, module, SKU, brand, or category.</li>
+              <li>Add items to cart, save products to wishlist, and checkout with order details.</li>
+              <li>User accounts support orders, wishlist, profile settings, security, and theme preferences.</li>
+              <li>Distributor accounts support business buying, GST details, invoices, recommendations, and availability updates.</li>
+              <li>Returns, order history, community signals, and help tools are available from the store experience.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2>Connect with us</h2>
+        <p>Email ID - microchipcaty025@gmail.com</p>
+        <p>Phone number - 9175536112</p>
+        <p>Address - Sr No 222/1 bldg No 8 1st, to 5th Raheja Woods, Yerwada, Pune City, Pune - 411006, Maharashtra</p>
+      </div>
+      <div>
+        <h2>Let us help you</h2>
+        <a href="/help#returns">Returns</a>
+        <a href="/#account-settings">Your account</a>
+        <a href="/help">Help</a>
+      </div>
+    </footer>
+
+    <div class="toast community-toast" id="communityToast" role="status" aria-live="polite"></div>
+    <script src="{{ url_for('static', filename='community/community.js') }}?v=community-hub-v1"></script>
+  </body>
+</html>

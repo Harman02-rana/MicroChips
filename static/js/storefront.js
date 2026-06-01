@@ -139,6 +139,13 @@ function escapeHtml(value = "") {
 }
 
 function toast(message) {
+  const openModal = document.querySelector("dialog.modal[open]");
+  if (openModal && els.toast.parentElement !== openModal) {
+    const closeRow = openModal.querySelector(".modal-close-row");
+    openModal.insertBefore(els.toast, closeRow?.nextSibling || openModal.firstChild);
+  } else if (!openModal && els.toast.parentElement !== document.body) {
+    document.body.appendChild(els.toast);
+  }
   els.toast.textContent = message;
   els.toast.classList.add("show");
   setTimeout(() => els.toast.classList.remove("show"), 2600);
@@ -625,7 +632,7 @@ function renderCategories() {
 
 function renderProducts() {
   const products = visibleProducts();
-  els.heroProductCount.textContent = state.products.length;
+  if (els.heroProductCount) els.heroProductCount.textContent = state.products.length;
   renderPopularHero();
   els.sampleNote.classList.toggle("hidden", !state.products.some(product => product.sample));
   if (!products.length) {
@@ -699,8 +706,8 @@ const demoCommunityThoughts = [
   {
     id: "demo-esp32-brownout",
     user_name: "Rohan",
-    category: "Problem",
-    title: "ESP32 brownout when WiFi starts",
+    category: "Need Eyes",
+    title: "ESP32 drops when WiFi wakes",
     content: "Try a 470uF capacitor near 3V3 and check regulator headroom before blaming the module. This fixed my lab build today.",
     likes: 12,
     reply_count: 4,
@@ -709,8 +716,8 @@ const demoCommunityThoughts = [
   {
     id: "demo-lora-range",
     user_name: "Neha",
-    category: "Experience",
-    title: "LoRa range improved after antenna swap",
+    category: "Bench Win",
+    title: "LoRa range doubled after antenna swap",
     content: "The same SX1278 board went from patchy to solid after moving to a tuned 433MHz antenna. Cheap module, big difference.",
     likes: 18,
     reply_count: 6,
@@ -719,7 +726,7 @@ const demoCommunityThoughts = [
   {
     id: "demo-pick-and-place",
     user_name: "Aarav",
-    category: "Project",
+    category: "Build Drop",
     title: "Mini pick-and-place controller build",
     content: "Using STM32, TMC2209 drivers, and a tiny vacuum pump. Need suggestions for a reliable nozzle holder before I order parts.",
     likes: 25,
@@ -729,7 +736,7 @@ const demoCommunityThoughts = [
   {
     id: "demo-connector-match",
     user_name: "Fatima",
-    category: "General",
+    category: "Part Hunt",
     title: "Anyone matched this 1.25mm connector?",
     content: "Looks like JST-GH but the latch feels different. If someone has a confirmed equivalent, save me one wrong cart.",
     likes: 9,
@@ -739,7 +746,7 @@ const demoCommunityThoughts = [
   {
     id: "demo-sensor-noise",
     user_name: "Kabir",
-    category: "Problem",
+    category: "Bench Win",
     title: "IMU noise dropped after grounding change",
     content: "Shared ground was the villain. Star ground plus shorter I2C lines made the readings finally behave.",
     likes: 16,
@@ -763,7 +770,7 @@ function renderCommunityPosts() {
   if (!els.communityPostsList) return;
   const posts = state.communityPosts.length ? state.communityPosts : demoCommunityThoughts;
   const filtered = posts.filter(post => {
-    return currentCategoryFilter === "All" || post.category === currentCategoryFilter;
+    return currentCategoryFilter === "All" || communityCategoryLabel(post.category) === currentCategoryFilter;
   });
   
   if (!filtered.length) {
@@ -785,7 +792,8 @@ function renderCommunityPosts() {
       } catch (e) {}
     }
     
-    const catClass = categoryBadgeClass(post.category);
+    const displayCategory = communityCategoryLabel(post.category);
+    const catClass = categoryBadgeClass(displayCategory);
 
     return `
       <article class="post-card-board" data-post-id="${post.id}">
@@ -797,7 +805,10 @@ function renderCommunityPosts() {
               <small class="post-time">${dateStr}</small>
             </div>
           </div>
-          <span class="category-badge ${catClass}">${escapeHtml(post.category)}</span>
+          <div class="post-card-tools">
+            <span class="category-badge ${catClass}">${escapeHtml(displayCategory)}</span>
+            ${post.can_delete ? `<button type="button" class="post-action-btn delete-community-btn" data-delete-post-id="${post.id}" aria-label="Delete signal">&times;</button>` : ""}
+          </div>
         </header>
         <div class="post-body-board">
           <h3 class="post-title-board">${escapeHtml(post.title)}</h3>
@@ -810,7 +821,7 @@ function renderCommunityPosts() {
           </button>
           <button type="button" class="post-action-btn comment-btn" ${isDemoPost ? "disabled" : `data-toggle-replies-id="${post.id}"`}>
             <span class="comment-icon">&#128172;</span>
-            <span class="replies-count">${post.reply_count || 0}</span> Comments
+            <span class="replies-count">${post.reply_count || 0}</span> Replies
           </button>
         </footer>
         
@@ -873,7 +884,7 @@ function updateThoughtPreview() {
   if (!els.communityPostForm || !els.previewTitle) return;
   const formData = new FormData(els.communityPostForm);
   const name = String(formData.get("name") || "").trim();
-  const category = String(formData.get("category") || "General").trim();
+  const category = String(formData.get("category") || "Need Eyes").trim();
   const title = String(formData.get("title") || "").trim();
   const content = String(formData.get("content") || "").trim();
   const author = name || "Your name";
@@ -885,20 +896,29 @@ function updateThoughtPreview() {
     els.previewAuthorName.textContent = author;
   }
   if (els.previewCategory) {
-    els.previewCategory.textContent = category || "General";
+    els.previewCategory.textContent = category || "Need Eyes";
     els.previewCategory.className = `category-badge ${categoryBadgeClass(category)}`;
   }
-  els.previewTitle.textContent = title || "Your thought title will appear here";
+  els.previewTitle.textContent = title || "Your signal title will appear here";
   if (els.previewContent) {
     els.previewContent.textContent = content || "Start typing details and the live community card will update here.";
   }
 }
 
 function categoryBadgeClass(category) {
-  if (category === "Problem") return "badge-problem";
-  if (category === "Experience") return "badge-experience";
-  if (category === "Project") return "badge-project";
+  if (category === "Need Eyes") return "badge-eyes";
+  if (category === "Bench Win") return "badge-win";
+  if (category === "Part Hunt") return "badge-hunt";
+  if (category === "Build Drop") return "badge-build";
   return "badge-general";
+}
+
+function communityCategoryLabel(category) {
+  if (category === "Problem") return "Need Eyes";
+  if (category === "Experience") return "Bench Win";
+  if (category === "Project") return "Build Drop";
+  if (category === "General") return "Part Hunt";
+  return category || "Need Eyes";
 }
 
 async function loadAndRenderReplies(postId) {
@@ -920,11 +940,12 @@ async function loadAndRenderReplies(postId) {
         } catch (e) {}
       }
       return `
-        <article class="reply-card-board">
+        <article class="reply-card-board" data-reply-id="${r.id}">
           <header class="reply-header-board">
             <span class="user-avatar-initial small-avatar">${escapeHtml(r.user_name.charAt(0).toUpperCase())}</span>
             <strong>${escapeHtml(r.user_name)}</strong>
             <small>${rDateStr}</small>
+            ${r.can_delete ? `<button type="button" class="reply-delete-btn" data-delete-reply-id="${r.id}" data-parent-post-id="${postId}" aria-label="Delete reply">&times;</button>` : ""}
           </header>
           <p class="reply-content-board">${escapeHtml(r.content)}</p>
         </article>
@@ -994,7 +1015,7 @@ function bindCommunityForum() {
         method: "POST",
         body: JSON.stringify(body)
       });
-      toast("Discussion posted successfully");
+      toast("Signal posted live");
       form.reset();
       updateThoughtPreview();
       els.postFormCard.classList.add("hidden");
@@ -1006,6 +1027,42 @@ function bindCommunityForum() {
   });
 
   els.communityPostsList.addEventListener("click", async event => {
+    const deletePostBtn = event.target.closest("[data-delete-post-id]");
+    if (deletePostBtn) {
+      const postId = deletePostBtn.dataset.deletePostId;
+      if (!confirm("Delete this community signal?")) return;
+      try {
+        await api(`/api/community/posts/${postId}`, { method: "DELETE" });
+        state.communityPosts = state.communityPosts.filter(p => p.id !== postId);
+        renderCommunityPosts();
+        toast("Signal deleted");
+      } catch (err) {
+        toast(err.message);
+      }
+      return;
+    }
+
+    const deleteReplyBtn = event.target.closest("[data-delete-reply-id]");
+    if (deleteReplyBtn) {
+      const replyId = deleteReplyBtn.dataset.deleteReplyId;
+      const postId = deleteReplyBtn.dataset.parentPostId;
+      if (!confirm("Delete this reply?")) return;
+      try {
+        await api(`/api/community/replies/${replyId}`, { method: "DELETE" });
+        await loadAndRenderReplies(postId);
+        const postIdx = state.communityPosts.findIndex(p => p.id === postId);
+        if (postIdx > -1) {
+          state.communityPosts[postIdx].reply_count = Math.max(0, (state.communityPosts[postIdx].reply_count || 0) - 1);
+          const countSpan = document.querySelector(`[data-toggle-replies-id="${postId}"] .replies-count`);
+          if (countSpan) countSpan.textContent = state.communityPosts[postIdx].reply_count;
+        }
+        toast("Reply deleted");
+      } catch (err) {
+        toast(err.message);
+      }
+      return;
+    }
+
     const likeBtn = event.target.closest("[data-like-post-id]");
     if (likeBtn) {
       const postId = likeBtn.dataset.likePostId;
@@ -1360,21 +1417,110 @@ function bindAuth() {
     }
   });
 
+  const signupForm = document.querySelector("#signupForm");
+  const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
+  const emailOtpLength = 6;
+  const emailOtpInput = signupForm?.querySelector("[name='otp']");
+  const otpEmailInput = signupForm?.querySelector("[name='otp_email']");
+  const otpTokenInput = signupForm?.querySelector("[name='otp_token']");
+  let emailOtpCooldownTimer = null;
+  const startEmailOtpCooldown = seconds => {
+    if (!sendEmailOtpBtn) return;
+    clearInterval(emailOtpCooldownTimer);
+    const defaultLabel = "Send Email OTP";
+    let remaining = Math.max(1, Number(seconds) || 60);
+    sendEmailOtpBtn.disabled = true;
+    sendEmailOtpBtn.textContent = `Resend in ${remaining}s`;
+    emailOtpCooldownTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(emailOtpCooldownTimer);
+        sendEmailOtpBtn.disabled = false;
+        sendEmailOtpBtn.textContent = defaultLabel;
+        return;
+      }
+      sendEmailOtpBtn.textContent = `Resend in ${remaining}s`;
+    }, 1000);
+  };
+
+  sendEmailOtpBtn?.addEventListener("click", async () => {
+    console.log("SEND OTP CALLED");
+    const email = String(signupForm?.querySelector("[name='email']")?.value || "").trim();
+    if (!email) {
+      toast("Email is required.");
+      return;
+    }
+    sendEmailOtpBtn.disabled = true;
+    try {
+      const response = await fetch("/api/auth/send-email-otp", {
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json().catch(() => ({
+        success: false,
+        error: response.ok ? "Empty server response" : "Server is temporarily unavailable"
+      }));
+      if (!response.ok || data.success !== true) {
+        throw new Error(data.error || "Could not send email OTP. Please try again.");
+      }
+      if (emailOtpInput) emailOtpInput.value = "";
+      if (otpEmailInput) otpEmailInput.value = email;
+      if (otpTokenInput) otpTokenInput.value = data.otp_token || "";
+      if (data.otp_token) localStorage.setItem("mc_email_otp", JSON.stringify({ email, token: data.otp_token }));
+      toast(data.message || "OTP sent to your email.");
+      startEmailOtpCooldown(data.cooldown_seconds || 60);
+    } catch (error) {
+      toast(error.message);
+      sendEmailOtpBtn.disabled = false;
+    } finally {
+      if (!emailOtpCooldownTimer) {
+        sendEmailOtpBtn.disabled = false;
+      }
+    }
+  });
+
   document.querySelector("#signupForm").addEventListener("submit", async event => {
     event.preventDefault();
+    const form = event.currentTarget;
+    console.log("VERIFY OTP CALLED");
     try {
-      const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+      const body = Object.fromEntries(new FormData(form).entries());
       body.account_type = state.authMode;
+      const hasBusinessDetails = Boolean(
+        String(body.company_name || "").trim() ||
+        String(body.gstin || "").trim() ||
+        String(body.business_address || "").trim()
+      );
+      if (body.account_type === "B2B" && !hasBusinessDetails) {
+        body.account_type = "B2C";
+      }
+      if (body.otp_email) {
+        body.email = String(body.otp_email || "").trim();
+      } else {
+        body.email = String(body.email || "").trim();
+      }
+      body.otp_token = String(body.otp_token || "");
+      if (!body.otp_token) {
+        try {
+          const savedOtp = JSON.parse(localStorage.getItem("mc_email_otp") || "{}");
+          if (savedOtp.email === body.email && savedOtp.token) body.otp_token = savedOtp.token;
+        } catch (error) {}
+      }
+      body.otp = String(body.otp || "").trim();
+      if (body.otp.length !== emailOtpLength) {
+        toast("Invalid or expired OTP. Please request a new code.");
+        return;
+      }
 
-      const data = await api("/api/auth/signup", {
+      const data = await api("/api/auth/verify-email-otp", {
         method: "POST",
         body: JSON.stringify(body)
       });
-      state.currentUser = data.user;
-      await loadMe();
-      els.authModal.close();
-      toast(`${state.authMode === "B2B" ? "Business" : "Customer"} account created`);
-      window.location.assign(data.redirect_url || authDestination());
+      toast(data.message || "Account created. Please login.");
+      localStorage.removeItem("mc_email_otp");
+      form?.reset?.();
+      showAuth("login", state.authMode);
     } catch (error) {
       toast(error.message);
     }
@@ -1385,6 +1531,7 @@ function handleHashRoute() {
   const hash = decodeURIComponent(location.hash || "");
   if (hash === "#login") showAuth("login");
   if (hash === "#signup") showAuth("signup");
+  if (hash === "#account-settings") showSettings();
   if (hash.startsWith("#payment=success")) {
     state.cart = [];
     saveCart();
@@ -2131,19 +2278,79 @@ function initHeaderOverrides() {
   const locationBtn = document.querySelector("#locationBtn");
   const locationModal = document.querySelector("#locationModal");
   const locationForm = document.querySelector("#locationForm");
+  const locationPincodeInput = document.querySelector("#locationPincodeInput");
+  const locationCityInput = document.querySelector("#locationCityInput");
+  const locationStateSelect = document.querySelector("#locationStateSelect");
+  const locationLookupStatus = document.querySelector("#locationLookupStatus");
+  let locationLookupController = null;
+
+  const setLocationLookupStatus = message => {
+    if (locationLookupStatus) locationLookupStatus.textContent = message || "";
+  };
+
+  const lookupPincodeLocation = async pincode => {
+    if (!/^\d{6}$/.test(pincode)) {
+      setLocationLookupStatus("");
+      return null;
+    }
+    locationLookupController?.abort();
+    locationLookupController = new AbortController();
+    setLocationLookupStatus("Fetching city and state...");
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${encodeURIComponent(pincode)}`, {
+        signal: locationLookupController.signal
+      });
+      if (!response.ok) throw new Error("Pincode lookup failed");
+      const data = await response.json();
+      const result = Array.isArray(data) ? data[0] : null;
+      const postOffice = result?.PostOffice?.[0];
+      if (!postOffice) throw new Error(result?.Message || "Pincode not found");
+
+      const city = postOffice.District || postOffice.Name || "";
+      const stateName = postOffice.State || "";
+      if (locationCityInput) locationCityInput.value = city;
+      if (locationStateSelect && stateName) {
+        const hasOption = [...locationStateSelect.options].some(option => option.value === stateName);
+        locationStateSelect.value = hasOption ? stateName : "Other";
+      }
+      setLocationLookupStatus(city && stateName ? `Detected ${city}, ${stateName}.` : "Location detected.");
+      return { city, state: stateName };
+    } catch (error) {
+      if (error.name === "AbortError") return null;
+      setLocationLookupStatus("Could not auto-detect this pincode. Select the state manually.");
+      return null;
+    }
+  };
   
   if (locationBtn && locationModal) {
     locationBtn.addEventListener("click", () => {
       locationModal.showModal();
     });
   }
+
+  locationPincodeInput?.addEventListener("input", event => {
+    event.currentTarget.value = event.currentTarget.value.replace(/\D+/g, "").slice(0, 6);
+    if (event.currentTarget.value.length === 6) {
+      lookupPincodeLocation(event.currentTarget.value);
+    } else {
+      if (locationCityInput) locationCityInput.value = "";
+      setLocationLookupStatus("");
+    }
+  });
   
   if (locationForm && locationModal) {
-    locationForm.addEventListener("submit", (e) => {
+    locationForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       const pincode = locationForm.pincode.value;
-      const stateVal = locationForm.state.value;
-      state.currentLocation = `${stateVal} (${pincode})`;
+      let cityVal = (locationForm.city?.value || "").trim();
+      let stateVal = locationForm.state.value;
+      if (!cityVal || !stateVal) {
+        const detected = await lookupPincodeLocation(pincode);
+        cityVal = cityVal || detected?.city || "";
+        stateVal = stateVal || detected?.state || "";
+      }
+      const locationParts = [cityVal, stateVal].filter(Boolean).join(", ") || "India";
+      state.currentLocation = `${locationParts} (${pincode})`;
       localStorage.setItem("mc_location", state.currentLocation);
       if (document.querySelector("#currentLocationLabel")) {
         document.querySelector("#currentLocationLabel").textContent = state.currentLocation;

@@ -85,9 +85,8 @@ function renderSummary() {
     ["Users", cards.users ?? 0],
     ["Products", cards.products ?? 0],
     ["Orders", cards.orders ?? 0],
-    ["Pending", cards.pending_orders ?? 0],
-    ["Revenue", moneyLabel(cards.approved_revenue || 0)],
-    ["Sample mode", cards.sample_mode ? "On" : "Off"]
+    ["Pending", cards.pending_approvals ?? cards.pending_orders ?? 0],
+    ["Revenue", moneyLabel(cards.approved_revenue || 0)]
   ];
   $("#summaryCards").innerHTML = items.map(([label, value]) => `
     <article class="stat-card">
@@ -129,7 +128,7 @@ function renderProducts() {
     const haystack = `${product.name} ${product.sku} ${product.category} ${product.brand} ${product.model}`.toLowerCase();
     return haystack.includes(query);
   });
-  $("#productsTable").innerHTML = products.map(product => `
+  $("#productsTable").innerHTML = products.length ? products.map(product => `
     <tr>
       <td>
         <div class="product-cell">
@@ -152,7 +151,11 @@ function renderProducts() {
         </div>
       </td>
     </tr>
-  `).join("");
+  `).join("") : `
+    <tr>
+      <td colspan="6"><p class="hint">No products yet. Add a product manually or scan a SKU to start inventory.</p></td>
+    </tr>
+  `;
 
   if (adminState.nextImage) {
     $("#nextPathBadge").textContent = adminState.nextImage.display_path;
@@ -181,7 +184,7 @@ function renderOrders() {
           <span>${escapeHtml(order.payment_method)} &middot; ${escapeHtml(order.payment_status)}</span>
         </div>
         <div class="order-actions">
-          <a href="/admin/orders/${order.id}/invoice" target="_blank" rel="noreferrer"><button type="button">Invoice</button></a>
+          <button type="button" data-order-invoice="${order.id}">Invoice</button>
           <button type="button" data-order-status="${order.id}" data-status="Approved">Approve</button>
           <button type="button" class="danger-btn" data-order-status="${order.id}" data-status="Rejected">Reject</button>
         </div>
@@ -258,7 +261,7 @@ function renderAnalytics() {
     </div>
   `).join("") || `<p class="hint">Sales bars will appear after approved orders.</p>`;
 
-  $("#analyticsTable").innerHTML = rows.map(row => `
+  $("#analyticsTable").innerHTML = rows.length ? rows.map(row => `
     <tr>
       <td>${escapeHtml(row.name)}${row.sample ? " (sample)" : ""}</td>
       <td>${row.views}</td>
@@ -267,7 +270,7 @@ function renderAnalytics() {
       <td>${row.conversion}%</td>
       <td>${row.interest_score}</td>
     </tr>
-  `).join("");
+  `).join("") : `<tr><td colspan="6"><p class="hint">No product performance data yet.</p></td></tr>`;
 }
 
 function renderSettings() {
@@ -276,6 +279,11 @@ function renderSettings() {
   form.store_name.value = settings.store_name || "Microchip Cart";
   form.support_email.value = settings.support_email || "";
   form.announcement.value = settings.announcement || "";
+  [...form.elements].forEach(input => {
+    if (!input.name || !input.name.includes(".")) return;
+    const [section, field] = input.name.split(".");
+    input.value = settings?.[section]?.[field] || "";
+  });
 }
 
 async function loadSummary() {
@@ -333,6 +341,58 @@ async function refreshAll() {
 }
 
 function bindProductForm() {
+  $("#barcodeLookupBtn")?.addEventListener("click", async () => {
+    const input = $("#barcodeInput");
+    const code = input.value.trim();
+    if (!code) {
+      toast("Scan or enter a SKU first");
+      input.focus();
+      return;
+    }
+    const button = $("#barcodeLookupBtn");
+    button.disabled = true;
+    button.textContent = "Scanning...";
+    try {
+      const data = await api(`/api/admin/products/lookup?code=${encodeURIComponent(code)}`);
+      const form = $("#productForm");
+      form.sku.value = code;
+      if (data.found && data.product) {
+        const product = data.product;
+        form.name.value = product.name || "";
+        form.description.value = product.description || "";
+        form.category.value = product.category || "";
+        form.brand.value = product.brand || "";
+        form.model.value = product.model || "";
+        form.sku.value = product.sku || code;
+        form.price.value = product.price || "";
+        form.stock.value = product.stock || "";
+        form.specs.value = specsToText(product.specs || {});
+        form.datasheet_url.value = product.datasheet_url || "";
+        form.lead_time.value = product.lead_time || "";
+        form.warranty.value = product.warranty || "";
+        form.image_url.value = product.image_url || "";
+        $("#barcodeScanHint").textContent = "Existing product found. Review fields, adjust stock/price, then save if needed.";
+        toast("Product fields filled from database");
+      } else {
+        form.name.focus();
+        $("#barcodeScanHint").textContent = "New SKU. Complete the missing product fields manually.";
+        toast("New SKU. Complete product details.");
+      }
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Scan";
+    }
+  });
+
+  $("#barcodeInput")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("#barcodeLookupBtn").click();
+    }
+  });
+
   $("#nextPathBadge").addEventListener("click", () => {
     if (!adminState.nextImage) return;
     $("#imageUrlField").value = adminState.nextImage.web_path;
@@ -446,10 +506,25 @@ function bindOrders() {
     renderOrders();
   });
   $("#ordersTable").addEventListener("click", async event => {
+    const invoiceButton = event.target.closest("[data-order-invoice]");
+    if (invoiceButton) {
+      const url = `/admin/orders/${invoiceButton.dataset.orderInvoice}/invoice`;
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (!opened) {
+        location.href = url;
+      }
+      return;
+    }
+
     const button = event.target.closest("[data-order-status]");
     if (!button) return;
     const status = button.dataset.status;
-    const admin_notes = prompt(`${status} note`, "") || "";
+    if (button.disabled) return;
+    const admin_notes = status === "Rejected" ? (prompt("Rejection reason (optional)", "") || "") : (prompt("Approval note (optional)", "") || "");
+    const actionButtons = button.closest(".order-actions")?.querySelectorAll("button") || [];
+    actionButtons.forEach(item => item.disabled = true);
+    const originalText = button.textContent;
+    button.textContent = status === "Approved" ? "Approving..." : "Rejecting...";
     try {
       await api(`/api/admin/orders/${button.dataset.orderStatus}`, {
         method: "PATCH",
@@ -460,6 +535,9 @@ function bindOrders() {
       toast(`Order ${status.toLowerCase()}`);
     } catch (error) {
       toast(error.message);
+    } finally {
+      actionButtons.forEach(item => item.disabled = false);
+      button.textContent = originalText;
     }
   });
 

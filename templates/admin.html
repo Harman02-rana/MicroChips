@@ -4,17 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Business Panel | Microchip Cart</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=business-dark-cyan">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=business-personal-v1">
   </head>
   <body>
     <div class="admin-shell">
       <aside class="sidebar">
         <a class="brand-lockup" href="/admin">
-          <span class="brand-mark">MC</span>
-          <div>
-            <strong>Microchip Cart</strong>
-            <small>{{ store_mode }}</small>
-          </div>
+          <strong>MicroChipCart</strong>
         </a>
         <nav class="side-nav" aria-label="Admin navigation">
           <button class="active" type="button" data-panel="dashboard">Dashboard</button>
@@ -39,7 +35,9 @@
           </div>
           <div class="admin-meta">
             <span>{{ admin_email }}</span>
-            <a href="/owner">Owner admin</a>
+            {% if is_owner_admin %}
+            <a href="/owner">Personal</a>
+            {% endif %}
             <a href="/" target="_blank" rel="noreferrer">Open store</a>
           </div>
         </header>
@@ -70,6 +68,15 @@
               <div class="card-head">
                 <h2>Add product</h2>
                 <span id="nextPathBadge">static/uploads/products/0.webp</span>
+              </div>
+              <div class="barcode-scan-card">
+                <label>Barcode / SKU scan
+                  <div class="scan-row">
+                    <input id="barcodeInput" placeholder="Scan or enter SKU/model...">
+                    <button type="button" id="barcodeLookupBtn">Scan</button>
+                  </div>
+                </label>
+                <p class="hint" id="barcodeScanHint">Scan an existing SKU to fill the form, or continue manually for a new item.</p>
               </div>
               <form id="productForm" class="dense-form">
                 <label>Product name<input name="name" required></label>
@@ -199,15 +206,89 @@
         </section>
 
         <section class="panel" id="settingsPanel">
-          <article class="card narrow-card">
+          <article class="card">
             <div class="card-head">
-              <h2>Store settings</h2>
-              <span>Public homepage</span>
+              <h2>Marketplace settings</h2>
+              <span>Distributor SaaS profile</span>
             </div>
             <form id="settingsForm" class="dense-form">
-              <label>Store name<input name="store_name" required></label>
-              <label>Support email<input name="support_email" type="email" required></label>
-              <label>Announcement<textarea name="announcement" rows="3"></textarea></label>
+              <fieldset class="settings-fieldset">
+                <legend>Store profile</legend>
+                <label>Store name<input name="store_name" required></label>
+                <label>Support email<input name="support_email" type="email" required></label>
+                <label>Announcement<textarea name="announcement" rows="3"></textarea></label>
+                <div class="two-col">
+                  <label>Tagline<input name="store_profile.tagline" placeholder="Reliable parts for builders"></label>
+                  <label>Currency<input name="store_profile.default_currency" value="INR"></label>
+                </div>
+                <label>Marketplace description<textarea name="store_profile.marketplace_description" rows="3"></textarea></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Distributor business details</legend>
+                <div class="two-col">
+                  <label>Legal name<input name="business_details.legal_name"></label>
+                  <label>GSTIN<input name="business_details.gstin"></label>
+                </div>
+                <div class="two-col">
+                  <label>Business phone<input name="business_details.business_phone"></label>
+                  <label>Business address<input name="business_details.business_address"></label>
+                </div>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Payout / payment info placeholder</legend>
+                <div class="two-col">
+                  <label>Payout method<input name="payout_info.payout_method" placeholder="Bank transfer / UPI"></label>
+                  <label>Settlement cycle<input name="payout_info.settlement_cycle" placeholder="Weekly"></label>
+                </div>
+                <label>Account label<input name="payout_info.account_label" placeholder="Add payout details when backend is ready"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Shipping / dispatch preferences</legend>
+                <div class="two-col">
+                  <label>Dispatch window<input name="shipping_preferences.dispatch_window" placeholder="Same day / 24-48 hours"></label>
+                  <label>Default carrier<input name="shipping_preferences.default_carrier"></label>
+                </div>
+                <label>Shipping regions<input name="shipping_preferences.shipping_regions" placeholder="India, Maharashtra, Pune..."></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Product approval preferences</legend>
+                <div class="two-col">
+                  <label>Auto submit products<input name="approval_preferences.auto_submit_products" placeholder="Yes / No"></label>
+                  <label>Require owner review<input name="approval_preferences.require_owner_review" placeholder="Yes / No"></label>
+                </div>
+                <label>Allow backorders<input name="approval_preferences.allow_backorders" placeholder="No"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Notification preferences</legend>
+                <div class="two-col">
+                  <label>Order email<input name="notification_preferences.order_email"></label>
+                  <label>Stock alerts<input name="notification_preferences.stock_alerts" placeholder="Enabled / Disabled"></label>
+                </div>
+                <label>Community replies<input name="notification_preferences.community_replies" placeholder="Enabled / Disabled"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Marketplace visibility</legend>
+                <div class="two-col">
+                  <label>Public profile<input name="marketplace_visibility.public_profile" placeholder="Visible / Hidden"></label>
+                  <label>Show stock count<input name="marketplace_visibility.show_stock_count" placeholder="Yes / No"></label>
+                </div>
+                <label>Accept bulk requests<input name="marketplace_visibility.accept_bulk_requests" placeholder="Yes / No"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Support contact details</legend>
+                <div class="two-col">
+                  <label>Support name<input name="support_contact.support_name"></label>
+                  <label>Support phone<input name="support_contact.support_phone"></label>
+                </div>
+                <label>Support hours<input name="support_contact.support_hours" placeholder="Mon-Sat, 10 AM - 6 PM"></label>
+              </fieldset>
               <button type="submit">Save settings</button>
             </form>
           </article>
@@ -249,6 +330,6 @@
     </dialog>
 
     <div class="toast" id="toast"></div>
-    <script src="{{ url_for('static', filename='js/admin.js') }}?v=business-dispatch-theme"></script>
+    <script src="{{ url_for('static', filename='js/admin.js') }}?v=business-personal-v1"></script>
   </body>
 </html>

@@ -3,18 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Owner Command | Microchip Cart</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=owner-panel-v1">
+    <title>Microchip Cart | Company Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=owner-auth-theme-v1">
   </head>
   <body>
     <div class="admin-shell owner-shell">
       <aside class="sidebar owner-sidebar">
         <a class="brand-lockup" href="/owner">
-          <span class="brand-mark">MC</span>
-          <div>
-            <strong>Owner Command</strong>
-            <small>{{ store_mode }}</small>
-          </div>
+          <strong>Microchip Cart</strong>
         </a>
         <nav class="side-nav" aria-label="Owner navigation">
           <button class="active" type="button" data-owner-panel="overview">Overview</button>
@@ -23,6 +19,7 @@
           <button type="button" data-owner-panel="commerce">Commerce</button>
           <button type="button" data-owner-panel="products">Products</button>
           <button type="button" data-owner-panel="insights">Insights</button>
+          <button type="button" data-owner-panel="settings">Settings</button>
         </nav>
         <div class="side-footer">
           <button class="ghost-btn" id="themeToggle" type="button">Theme</button>
@@ -118,7 +115,9 @@
                     <th>GSTIN</th>
                     <th>Orders</th>
                     <th>Spend</th>
+                    <th>Status</th>
                     <th>Last login</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="ownerBusinessesTable"></tbody>
@@ -175,6 +174,8 @@
                     <th>Units</th>
                     <th>Revenue</th>
                     <th>Conversion</th>
+                    <th>Status</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="ownerProductsTable"></tbody>
@@ -208,10 +209,60 @@
             <div id="ownerActivityList" class="stack-list"></div>
           </article>
         </section>
+
+        <section class="panel" id="ownerSettingsPanel">
+          <article class="card">
+            <div class="card-head">
+              <h2>Company control settings</h2>
+              <span>Saved to backend</span>
+            </div>
+            <form id="ownerSettingsForm" class="dense-form">
+              <fieldset class="settings-fieldset">
+                <legend>Storefront profile</legend>
+                <label>Store name<input name="store_name" required></label>
+                <label>Support email<input name="support_email" type="email" required></label>
+                <label>Announcement<textarea name="announcement" rows="3"></textarea></label>
+                <div class="two-col">
+                  <label>Tagline<input name="store_profile.tagline" placeholder="Reliable parts for builders"></label>
+                  <label>Currency<input name="store_profile.default_currency" value="INR"></label>
+                </div>
+                <label>Marketplace description<textarea name="store_profile.marketplace_description" rows="3"></textarea></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Operations</legend>
+                <div class="two-col">
+                  <label>Dispatch window<input name="shipping_preferences.dispatch_window" placeholder="Same day / 24-48 hours"></label>
+                  <label>Default carrier<input name="shipping_preferences.default_carrier"></label>
+                </div>
+                <label>Shipping regions<input name="shipping_preferences.shipping_regions" placeholder="India, Maharashtra, Pune..."></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Approval rules</legend>
+                <div class="two-col">
+                  <label>Auto submit products<input name="approval_preferences.auto_submit_products" placeholder="Yes / No"></label>
+                  <label>Require owner review<input name="approval_preferences.require_owner_review" placeholder="Yes / No"></label>
+                </div>
+                <label>Allow backorders<input name="approval_preferences.allow_backorders" placeholder="No"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Support contact</legend>
+                <div class="two-col">
+                  <label>Support name<input name="support_contact.support_name"></label>
+                  <label>Support phone<input name="support_contact.support_phone"></label>
+                </div>
+                <label>Support hours<input name="support_contact.support_hours" placeholder="Mon-Sat, 10 AM - 6 PM"></label>
+              </fieldset>
+              <button type="submit">Save company settings</button>
+            </form>
+          </article>
+        </section>
       </main>
     </div>
 
     <div class="toast" id="toast"></div>
-    <script src="{{ url_for('static', filename='js/owner.js') }}?v=owner-panel-v1"></script>
+    <script src="{{ url_for('static', filename='js/owner.js') }}?v=owner-auth-theme-v1"></script>
   </body>
 </html>
