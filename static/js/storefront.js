@@ -12,6 +12,7 @@ const state = {
   authMode: "B2C",
   authToken: localStorage.getItem("mc_auth_token") || "",
   currentLocation: localStorage.getItem("mc_location") || "India",
+  currentLocationDetails: null,
   searchIndex: -1,
   pendingAuthAction: null,
 };
@@ -116,6 +117,52 @@ const inr = new Intl.NumberFormat("en-IN", {
 
 function moneyLabel(value) {
   return `INR ${inr.format(Number(value || 0))}`;
+}
+
+function savedDeliveryLocation() {
+  try {
+    const details = JSON.parse(localStorage.getItem("mc_location_details") || "{}");
+    if (details?.city || details?.pincode) return details;
+  } catch (error) {}
+
+  const legacy = localStorage.getItem("mc_location") || "";
+  const match = legacy.match(/^(.*?)\s*\((\d{6})\)$/);
+  if (match) {
+    const locality = match[1].split(",")[0].trim();
+    return { city: locality, pincode: match[2], state: "" };
+  }
+  return legacy && legacy !== "India" ? { city: legacy, pincode: "", state: "" } : null;
+}
+
+function syncCheckoutLocation(details, overwrite = false) {
+  if (!details) return;
+  const form = document.querySelector("#checkoutForm");
+  if (!form) return;
+  if (details.pincode && (overwrite || !form.pincode.value)) form.pincode.value = details.pincode;
+  if (details.city && (overwrite || !form.city.value)) form.city.value = details.city;
+  if (details.state && (overwrite || !form.state.value)) form.state.value = details.state;
+}
+
+function setDeliveryLocation(details, options = {}) {
+  const city = String(details?.city || "").trim();
+  const pincode = String(details?.pincode || "").replace(/\D+/g, "").slice(0, 6);
+  const stateName = String(details?.state || "").trim();
+  if (!city && !pincode) return;
+
+  const clean = { city, pincode, state: stateName };
+  state.currentLocationDetails = clean;
+  state.currentLocation = pincode ? `${city || "India"} (${pincode})` : (city || "India");
+  localStorage.setItem("mc_location_details", JSON.stringify(clean));
+  localStorage.setItem("mc_location", state.currentLocation);
+
+  const label = document.querySelector("#currentLocationLabel");
+  if (label) {
+    label.innerHTML = `
+      <span class="location-locality">${escapeHtml(city || "India")}</span>
+      ${pincode ? `<span class="location-pincode">${escapeHtml(pincode)}</span>` : ""}
+    `;
+  }
+  if (options.syncCheckout) syncCheckoutLocation(clean, true);
 }
 
 function brandLabel(value) {
@@ -1749,6 +1796,7 @@ async function checkout() {
   form.order_type.value = user.account_type || "B2C";
   form.company_name.value = user.company_name || "";
   form.gstin.value = user.gstin || "";
+  syncCheckoutLocation(savedDeliveryLocation(), false);
   setBusinessFields(form, "order_type");
   if (els.checkoutModal && !els.checkoutModal.open) els.checkoutModal.showModal();
 }
@@ -1764,6 +1812,13 @@ function bindCheckout() {
     const paymentMethod = address.payment_method;
     delete address.payment_method;
     try {
+      if (address.pincode || address.city) {
+        setDeliveryLocation({
+          city: address.city || address.line1 || "",
+          pincode: address.pincode || "",
+          state: address.state || ""
+        });
+      }
       const user = await ensureCurrentUser();
       if (!user) {
         state.pendingAuthAction = "checkout";
@@ -2475,13 +2530,8 @@ function initHeaderOverrides() {
     window.lucide.createIcons();
   }
   
-  const savedLocation = localStorage.getItem("mc_location");
-  if (savedLocation) {
-    state.currentLocation = savedLocation;
-    if (document.querySelector("#currentLocationLabel")) {
-      document.querySelector("#currentLocationLabel").textContent = savedLocation;
-    }
-  }
+  const savedLocation = savedDeliveryLocation();
+  if (savedLocation) setDeliveryLocation(savedLocation);
   
   const locationBtn = document.querySelector("#locationBtn");
   const locationModal = document.querySelector("#locationModal");
@@ -2538,7 +2588,7 @@ function initHeaderOverrides() {
         locationStateSelect.value = hasOption ? stateName : "Other";
       }
       const moreAreas = postOffices.length > 1 ? ` ${postOffices.length} delivery areas found for this pincode.` : "";
-      setLocationLookupStatus(city && stateName ? `Detected ${city}, ${stateName}.${moreAreas}` : "Location detected.");
+      setLocationLookupStatus(city ? `Detected ${city}.${moreAreas}` : "Location detected.");
       return { city, area, district, state: stateName };
     } catch (error) {
       if (error.name === "AbortError") return null;
@@ -2549,7 +2599,13 @@ function initHeaderOverrides() {
   
   if (locationBtn && locationModal) {
     locationBtn.addEventListener("click", () => {
-      locationModal.showModal();
+      const details = savedDeliveryLocation();
+      if (details) {
+        if (locationPincodeInput) locationPincodeInput.value = details.pincode || "";
+        if (locationCityInput) locationCityInput.value = details.city || "";
+        if (locationStateSelect) locationStateSelect.value = details.state || "";
+      }
+      if (!locationModal.open) locationModal.showModal();
     });
   }
 
@@ -2574,14 +2630,9 @@ function initHeaderOverrides() {
         cityVal = cityVal || detected?.city || "";
         stateVal = stateVal || detected?.state || "";
       }
-      const locationParts = [cityVal, stateVal].filter(Boolean).join(", ") || "India";
-      state.currentLocation = `${locationParts} (${pincode})`;
-      localStorage.setItem("mc_location", state.currentLocation);
-      if (document.querySelector("#currentLocationLabel")) {
-        document.querySelector("#currentLocationLabel").textContent = state.currentLocation;
-      }
+      setDeliveryLocation({ city: cityVal, pincode, state: stateVal }, { syncCheckout: true });
       locationModal.close();
-      toast(`Delivery location updated to ${state.currentLocation}`);
+      toast(`Delivery location updated to ${cityVal || "India"} ${pincode}`.trim());
     });
   }
   

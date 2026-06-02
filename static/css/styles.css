@@ -2785,10 +2785,27 @@ body[data-page="products"] .community-reviews {
 }
 
 .header-location .location-name {
+  display: flex;
+  flex-direction: column;
   font-size: 13px;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
+}
+
+.header-location .location-locality,
+.header-location .location-pincode {
+  display: block;
+  max-width: 128px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-location .location-pincode {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .location-lookup-status {
