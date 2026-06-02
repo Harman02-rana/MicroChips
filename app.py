@@ -976,7 +976,7 @@ def require_user():
     return user
 
 def require_checkout_user(data):
-    user = current_user() or user_from_auth_token(data.get("auth_token"))
+    user = current_user() or user_from_auth_token(data.get("auth_token") or request.headers.get("X-Auth-Token"))
     if not user:
         abort(make_response(api_error("Please login first.", 401)[0], 401))
     return user
@@ -2089,7 +2089,7 @@ def api_logout():
 
 @app.get("/api/auth/me")
 def api_me():
-    user = current_user()
+    user = current_user() or user_from_auth_token(request.headers.get("X-Auth-Token"))
     return api_ok({"user": public_user(user), "auth_token": make_auth_token(user) if user else ""})
 
 

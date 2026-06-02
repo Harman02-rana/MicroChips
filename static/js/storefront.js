@@ -154,9 +154,13 @@ function toast(message) {
 }
 
 async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (state.authToken && !headers["X-Auth-Token"]) {
+    headers["X-Auth-Token"] = state.authToken;
+  }
   const res = await fetch(path, {
     credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers,
     ...options
   });
   let data = {};
