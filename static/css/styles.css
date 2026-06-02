@@ -7096,3 +7096,62 @@ button {
     font-size: 11px;
   }
 }
+
+/* Mobile-only carousel dot and assistant alignment polish. */
+@media (max-width: 768px) {
+  .promo-dots {
+    bottom: 8px !important;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .promo-dots button {
+    width: 5px !important;
+    height: 5px !important;
+    min-width: 5px;
+    min-height: 5px;
+    border-width: 1px;
+  }
+
+  .promo-dots button.active {
+    width: 13px !important;
+    height: 5px !important;
+  }
+
+  .chatbot-widget {
+    right: 16px !important;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .chatbot-launcher {
+    display: grid !important;
+    place-items: center;
+    width: 56px !important;
+    min-width: 56px !important;
+    height: 56px !important;
+    min-height: 56px !important;
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .promo-dots {
+    bottom: 7px !important;
+    gap: 4px;
+  }
+
+  .promo-dots button {
+    width: 4px !important;
+    height: 4px !important;
+    min-width: 4px;
+    min-height: 4px;
+  }
+
+  .promo-dots button.active {
+    width: 11px !important;
+    height: 4px !important;
+  }
+}
