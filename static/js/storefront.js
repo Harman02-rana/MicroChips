@@ -1480,7 +1480,21 @@ function showAuth(tab = "login", mode = state.authMode) {
   document.querySelectorAll("[data-auth-panel]").forEach(panel => {
     panel.classList.toggle("active", panel.dataset.authPanel === tab);
   });
-  els.authModal.showModal();
+  if (els.authModal && !els.authModal.open) els.authModal.showModal();
+}
+
+function setFormBusy(form, busy, label) {
+  if (!form) return;
+  form.dataset.busy = busy ? "true" : "false";
+  const submit = form.querySelector("[type='submit']");
+  if (!submit) return;
+  if (busy) {
+    submit.dataset.defaultText = submit.textContent;
+    submit.textContent = label || "Please wait...";
+  } else if (submit.dataset.defaultText) {
+    submit.textContent = submit.dataset.defaultText;
+  }
+  submit.disabled = Boolean(busy);
 }
 
 async function ensureCurrentUser() {
@@ -1530,8 +1544,11 @@ function bindAuth() {
 
   document.querySelector("#loginForm").addEventListener("submit", async event => {
     event.preventDefault();
+    const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Logging in...");
     try {
-      const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+      const body = Object.fromEntries(new FormData(form).entries());
       body.account_type = state.authMode;
       const data = await api("/api/auth/login", {
         method: "POST",
@@ -1554,6 +1571,8 @@ function bindAuth() {
       window.location.assign(data.redirect_url || authDestination());
     } catch (error) {
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 
@@ -1584,13 +1603,15 @@ function bindAuth() {
   };
 
   sendEmailOtpBtn?.addEventListener("click", async () => {
-    console.log("SEND OTP CALLED");
+    if (sendEmailOtpBtn.disabled) return;
     const email = String(signupForm?.querySelector("[name='email']")?.value || "").trim();
     if (!email) {
       toast("Email is required.");
       return;
     }
     sendEmailOtpBtn.disabled = true;
+    const defaultOtpLabel = sendEmailOtpBtn.textContent;
+    sendEmailOtpBtn.textContent = "Sending...";
     try {
       const response = await fetch("/api/auth/send-email-otp", {
         headers: { "Content-Type": "application/json" },
@@ -1616,9 +1637,11 @@ function bindAuth() {
     } catch (error) {
       toast(error.message);
       sendEmailOtpBtn.disabled = false;
+      sendEmailOtpBtn.textContent = defaultOtpLabel;
     } finally {
       if (!emailOtpCooldownTimer) {
         sendEmailOtpBtn.disabled = false;
+        sendEmailOtpBtn.textContent = defaultOtpLabel;
       }
     }
   });
@@ -1626,7 +1649,8 @@ function bindAuth() {
   document.querySelector("#signupForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
-    console.log("VERIFY OTP CALLED");
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Creating...");
     try {
       const body = Object.fromEntries(new FormData(form).entries());
       body.account_type = state.authMode;
@@ -1666,6 +1690,8 @@ function bindAuth() {
       showAuth("login", state.authMode);
     } catch (error) {
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 }
