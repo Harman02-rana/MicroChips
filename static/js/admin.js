@@ -356,9 +356,18 @@ async function loadSettings() {
 }
 
 async function refreshAll() {
-  await Promise.all([loadSummary(), loadProducts(), loadOrders(), loadBusinesses(), loadAnalytics(), loadSettings()]);
+  const results = await Promise.allSettled([
+    loadSummary(),
+    loadProducts(),
+    loadOrders(),
+    loadBusinesses(),
+    loadAnalytics(),
+    loadSettings()
+  ]);
   renderSummary();
   renderUsers();
+  const failed = results.find(result => result.status === "rejected");
+  if (failed) throw failed.reason;
 }
 
 function bindProductForm() {

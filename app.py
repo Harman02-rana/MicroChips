@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse, parse_qsl, urlencode
 
 from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, session, url_for
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -3081,6 +3082,17 @@ def not_found(_):
     if request.path.startswith("/api/"):
         return api_error("Not found.", 404)
     return render_template("404.html"), 404
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    if isinstance(error, HTTPException):
+        if request.path.startswith("/api/"):
+            return api_error(error.description or error.name, error.code or 500)
+        return error
+    print(f"Unhandled error: {error}")
+    if request.path.startswith("/api/"):
+        return api_error("Server error. Please refresh and try again.", 500)
+    raise error
 
 
 if __name__ == "__main__":
