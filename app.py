@@ -1630,7 +1630,7 @@ def validate_signup_payload(data, require_otp=False):
             return "Invalid GST format. Please enter a valid 15-character GSTIN."
     return None
 
-def create_or_update_verified_user(db, auth_user, data):
+def create_or_update_verified_user(db, auth_user, data, store_password=False):
     email = data["email"]
     account_type = data["account_type"]
     role = "business" if account_type == "B2B" else "customer"
@@ -1648,7 +1648,9 @@ def create_or_update_verified_user(db, auth_user, data):
 
     user = existing
     if not user:
-        user = UserModel(id=auth_id, email=email, created_at=getattr(auth_user, "created_at", now_utc()))
+        user = UserModel(email=email, created_at=getattr(auth_user, "created_at", now_utc()))
+        if auth_id:
+            user.id = auth_id
         db.add(user)
     elif auth_id and str_id(user.id) != str_id(auth_id):
         old_id = user.id
@@ -1660,7 +1662,7 @@ def create_or_update_verified_user(db, auth_user, data):
     user.name = full_name
     user.full_name = full_name
     user.phone = phone
-    user.password_hash = None
+    user.password_hash = generate_password_hash(data["password"]) if store_password else None
     user.account_type = account_type
     user.role = role
     user.company_name = data.get("company_name") if account_type == "B2B" else None
@@ -1688,10 +1690,6 @@ def create_or_update_verified_user(db, auth_user, data):
 
 @app.post("/api/auth/send-email-otp")
 def api_send_email_otp():
-    if not supabase:
-        print("SEND EMAIL OTP ERROR: Supabase is not configured.")
-        return api_error("missing Supabase env vars", 500)
-
     data = request.get_json(silent=True) or {}
     email = normalize_email(data.get("email"))
     print("SEND EMAIL OTP REQUEST EMAIL:", email or "(missing)")
@@ -1719,9 +1717,6 @@ def api_send_email_otp():
 
 @app.post("/api/auth/verify-email-otp")
 def api_verify_email_otp():
-    if not supabase:
-        return api_error("missing Supabase env vars", 500)
-
     data = signup_payload()
     data["otp"] = normalize_email_otp(data.get("otp"))
     verify_type = "email"
@@ -1745,14 +1740,20 @@ def api_verify_email_otp():
         "account_type": data["account_type"],
         "role": "business" if data["account_type"] == "B2B" else "customer",
     }
-    auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
-    if not auth_user:
-        print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
-        return api_error("Email verified, but auth setup failed. Please try again.", 400)
+    auth_user = None
+    store_password = False
+    if supabase:
+        auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
+        if not auth_user:
+            print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
+            return api_error("Email verified, but auth setup failed. Please try again.", 400)
+    else:
+        print("SUPABASE AUTH NOT CONFIGURED: creating local password user after OTP verification.")
+        store_password = True
 
     db = DBSession()
     try:
-        user, user_error = create_or_update_verified_user(db, auth_user, data)
+        user, user_error = create_or_update_verified_user(db, auth_user, data, store_password=store_password)
         if user_error:
             print(f"LOCAL USER SETUP AFTER OTP FAILED: {user_error}")
             if user_error == "This email already has an account.":
@@ -1810,9 +1811,6 @@ def api_send_phone_otp():
 
 @app.post("/api/auth/signup")
 def api_signup_compat():
-    if not supabase:
-        return api_error("missing Supabase env vars", 500)
-
     data = signup_payload()
     validation_error = validate_signup_payload(data)
     if validation_error:
@@ -1863,9 +1861,6 @@ def api_signup_compat():
 @app.post("/api/auth/login")
 def api_login_direct():
     """Password login for customer and business accounts."""
-    if not supabase:
-        return api_error("missing Supabase env vars", 500)
-
     data     = request.get_json(silent=True) or {}
     email    = normalize_email(data.get("email"))
     password = data.get("password") or ""
@@ -1876,6 +1871,22 @@ def api_login_direct():
 
     db = DBSession()
     try:
+        if not supabase:
+            user = db.query(UserModel).filter_by(email=email).first()
+            if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
+                return api_error("Invalid email or password.", 401)
+            if requested_type and normalize_account_type(requested_type) != normalize_account_type(user.account_type):
+                return api_error("Please choose the correct account type for this email.", 403)
+            if not user.email_verified and not getattr(user, "is_admin", False):
+                return api_error("Please verify your email before logging in.", 403)
+            if (user.status or "Active") not in ("Active", "Pending"):
+                return api_error("This account is not active. Please contact support.", 403)
+            user.last_login = now_utc()
+            db.commit()
+            db.refresh(user)
+            session_login_for(user)
+            return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)})
+
         try:
             res = supabase.auth.sign_in_with_password({
                 "email": email,
