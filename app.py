@@ -1683,6 +1683,9 @@ def read_email_otp_token(token):
     return {"email": email, "digest": digest, "expires_at": expires_at}, None
 
 def send_app_email_otp(email):
+    smtp_ok, _ = smtp_config_status()
+    if not smtp_ok:
+        return None
     otp = f"{secrets.randbelow(10 ** EMAIL_OTP_LENGTH):0{EMAIL_OTP_LENGTH}d}"
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
     text_body = (
@@ -2144,7 +2147,8 @@ def api_login_direct():
             user.email_verified = email_verified
             if not user.role:
                 user.role = role
-            user.password_hash = generate_password_hash(password)
+            if not user.password_hash:
+                user.password_hash = generate_password_hash(password)
 
         if not user.email_verified and not getattr(user, "is_admin", False):
             db.rollback()
