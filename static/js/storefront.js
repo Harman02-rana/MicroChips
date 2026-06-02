@@ -1287,6 +1287,55 @@ function addToCart(productId) {
   toast("Added to cart");
 }
 
+function productForCartItem(item) {
+  const storedId = item.product_id || item.id;
+  return state.products.find(product => product.id === storedId)
+    || state.products.find(product => product.name === item.name);
+}
+
+function checkoutItemsFromCart() {
+  const rows = new Map();
+  const repairedCart = [];
+  let removedCount = 0;
+
+  state.cart.forEach(item => {
+    const product = productForCartItem(item);
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    if (!product || Number(product.stock || 0) <= 0) {
+      removedCount += quantity;
+      return;
+    }
+    const current = rows.get(product.id) || {
+      product_id: product.id,
+      quantity: 0,
+      product,
+    };
+    current.quantity = Math.min(Number(product.stock || 0), current.quantity + quantity);
+    rows.set(product.id, current);
+  });
+
+  rows.forEach(row => {
+    repairedCart.push({
+      id: row.product.id,
+      product_id: row.product.id,
+      name: row.product.name,
+      price: row.product.price,
+      image_url: row.product.image_url,
+      quantity: row.quantity,
+    });
+  });
+
+  if (removedCount || repairedCart.length !== state.cart.length) {
+    state.cart = repairedCart;
+    saveCart();
+  }
+
+  return repairedCart.map(item => ({
+    product_id: item.product_id,
+    quantity: item.quantity,
+  }));
+}
+
 async function showProduct(productId) {
   try {
     const data = await api(`/api/products/${productId}`);
@@ -1653,8 +1702,15 @@ function bindCheckout() {
         method: "POST",
         body: JSON.stringify({ type: "payment_selected", metadata: { payment_method: paymentMethod } })
       }).catch(() => {});
+      const items = checkoutItemsFromCart();
+      if (!items.length) {
+        toast("Cart refreshed. Please add an available product again.");
+        els.checkoutModal.close();
+        openCart();
+        return;
+      }
       const orderPayload = {
-        items: state.cart.map(item => ({ product_id: item.product_id, quantity: item.quantity })),
+        items,
         address,
         payment_method: paymentMethod
       };
