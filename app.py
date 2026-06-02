@@ -2079,8 +2079,24 @@ def api_login_direct():
 
     db = DBSession()
     try:
+        local_user = db.query(UserModel).filter_by(email=email).first()
+        if local_user and local_user.password_hash:
+            if not check_password_hash(local_user.password_hash, password):
+                return api_error("Invalid email or password.", 401)
+            if requested_type and normalize_account_type(requested_type) != normalize_account_type(local_user.account_type):
+                return api_error("Please choose the correct account type for this email.", 403)
+            if not local_user.email_verified and not getattr(local_user, "is_admin", False):
+                return api_error("Please verify your email before logging in.", 403)
+            if (local_user.status or "Active") not in ("Active", "Pending"):
+                return api_error("This account is not active. Please contact support.", 403)
+            local_user.last_login = now_utc()
+            db.commit()
+            db.refresh(local_user)
+            session_login_for(local_user)
+            return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
+
         if not supabase:
-            user = db.query(UserModel).filter_by(email=email).first()
+            user = local_user
             if not user and can_auto_create_test_account():
                 print(f"LOCAL TEST AUTH: auto-creating fallback account for {mask_email_for_log(email)}")
                 user = create_local_test_user(db, email, password, requested_type)
