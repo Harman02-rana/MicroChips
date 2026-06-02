@@ -115,6 +115,10 @@ body[data-theme="dark"] .toolbar {
 }
 
 html {
+  background:
+    radial-gradient(circle at 14% 2%, rgba(0, 212, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 82% 0%, rgba(56, 189, 248, 0.12), transparent 30%),
+    linear-gradient(180deg, #020817 0%, #071426 48%, #020817 100%);
   scroll-behavior: smooth;
 }
 
