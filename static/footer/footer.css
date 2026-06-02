@@ -114,3 +114,34 @@
     padding: 10px;
   }
 }
+
+@media (max-width: 768px) {
+  .site-footer {
+    gap: 18px;
+    padding-inline: 14px;
+  }
+
+  .site-footer h2 {
+    margin-bottom: 8px;
+  }
+
+  .site-footer a,
+  .site-footer button {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 414px) {
+  .site-footer {
+    padding: 18px 12px 108px;
+  }
+
+  .site-footer p,
+  .site-footer a,
+  .site-footer li {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+}

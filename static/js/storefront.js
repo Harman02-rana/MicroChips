@@ -764,7 +764,7 @@ function renderProducts() {
           </div>
           <div class="card-actions">
             <button class="secondary-btn" type="button" data-view-product="${product.id}">Details</button>
-            <button class="primary-btn" type="button" data-add-cart="${product.id}" ${product.stock <= 0 ? "disabled" : ""}>Add cart</button>
+            <button class="primary-btn" type="button" data-add-cart="${product.id}" ${product.stock <= 0 ? "disabled" : ""}>Add to Cart</button>
           </div>
         </div>
       </article>
@@ -1438,7 +1438,7 @@ async function showProduct(productId) {
             ${specs.map(([key, value]) => `<div><span>${escapeHtml(key)}</span>${escapeHtml(value)}</div>`).join("")}
           </div>
           <div class="card-actions">
-            <button class="primary-btn" type="button" data-add-cart="${product.id}">Add cart</button>
+            <button class="primary-btn" type="button" data-add-cart="${product.id}">Add to Cart</button>
             ${product.datasheet_url ? `<a class="secondary-btn" href="${escapeHtml(product.datasheet_url)}" target="_blank" rel="noreferrer">Datasheet</a>` : `<button class="secondary-btn" type="button" disabled>No datasheet</button>`}
           </div>
           <form id="reviewForm" class="checkout-form" style="margin-top:18px">
