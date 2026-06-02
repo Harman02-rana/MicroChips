@@ -1130,7 +1130,28 @@ main {
   max-width: min(720px, calc(100vw - 28px));
   overflow: auto;
   padding: 22px;
+  scrollbar-color: rgba(0, 198, 224, 0.5) rgba(5, 18, 34, 0.92);
+  scrollbar-width: thin;
   width: 520px;
+}
+
+.modal::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modal::-webkit-scrollbar-track {
+  background: rgba(5, 18, 34, 0.92);
+  border-radius: 999px;
+}
+
+.modal::-webkit-scrollbar-thumb {
+  background: rgba(0, 198, 224, 0.5);
+  border: 2px solid rgba(5, 18, 34, 0.92);
+  border-radius: 999px;
+}
+
+.modal::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 198, 224, 0.72);
 }
 
 .modal::backdrop {
