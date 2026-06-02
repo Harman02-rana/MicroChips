@@ -1559,16 +1559,19 @@ function bindAuth() {
         state.authToken = data.auth_token;
         localStorage.setItem("mc_auth_token", data.auth_token);
       }
-      await loadMe();
       const pendingAction = state.pendingAuthAction;
       state.pendingAuthAction = null;
       els.authModal.close();
+      updateAuthUi();
       toast("Logged in");
       if (pendingAction === "checkout") {
         await checkout();
         return;
       }
-      window.location.assign(data.redirect_url || authDestination());
+      const redirectUrl = data.redirect_url || authDestination();
+      if (redirectUrl && redirectUrl !== "/" && redirectUrl !== window.location.pathname) {
+        window.location.assign(redirectUrl);
+      }
     } catch (error) {
       toast(error.message);
     } finally {
