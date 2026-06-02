@@ -200,6 +200,77 @@ function toast(message) {
   setTimeout(() => els.toast.classList.remove("show"), 2600);
 }
 
+const scrollLockState = {
+  locked: false,
+  scrollY: 0,
+  scrollbarWidth: 0,
+};
+
+function hasBlockingOverlay() {
+  return Boolean(document.querySelector(
+    "dialog.modal[open], .cart-drawer.open, .mobile-sidebar.open, .header-nav-item.open"
+  ));
+}
+
+function lockPageScroll() {
+  if (scrollLockState.locked) return;
+  scrollLockState.scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+  scrollLockState.scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+  document.body.style.position = "fixed";
+  document.body.style.top = `-${scrollLockState.scrollY}px`;
+  document.body.style.left = "0";
+  document.body.style.right = "0";
+  document.body.style.width = "100%";
+  if (scrollLockState.scrollbarWidth > 0) {
+    document.body.style.paddingRight = `${scrollLockState.scrollbarWidth}px`;
+  }
+  scrollLockState.locked = true;
+}
+
+function unlockPageScroll() {
+  if (!scrollLockState.locked) return;
+  const y = scrollLockState.scrollY;
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+  document.body.style.paddingRight = "";
+  scrollLockState.locked = false;
+  scrollLockState.scrollY = 0;
+  scrollLockState.scrollbarWidth = 0;
+  window.scrollTo(0, y);
+}
+
+function refreshPageScrollLock() {
+  if (hasBlockingOverlay()) {
+    lockPageScroll();
+  } else {
+    unlockPageScroll();
+  }
+}
+
+function bindPageScrollLock() {
+  if (window.HTMLDialogElement?.prototype?.showModal) {
+    const nativeShowModal = window.HTMLDialogElement.prototype.showModal;
+    const nativeClose = window.HTMLDialogElement.prototype.close;
+    window.HTMLDialogElement.prototype.showModal = function(...args) {
+      const result = nativeShowModal.apply(this, args);
+      requestAnimationFrame(refreshPageScrollLock);
+      return result;
+    };
+    window.HTMLDialogElement.prototype.close = function(...args) {
+      const result = nativeClose.apply(this, args);
+      requestAnimationFrame(refreshPageScrollLock);
+      return result;
+    };
+  }
+  document.querySelectorAll("dialog.modal").forEach(dialog => {
+    dialog.addEventListener("close", () => requestAnimationFrame(refreshPageScrollLock));
+    dialog.addEventListener("cancel", () => requestAnimationFrame(refreshPageScrollLock));
+  });
+}
+
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   const authToken = state.authToken || localStorage.getItem("mc_auth_token") || "";
@@ -338,12 +409,14 @@ function openCart() {
   els.cartDrawer.classList.add("open");
   els.cartDrawer.setAttribute("aria-hidden", "false");
   els.scrim.classList.add("show");
+  refreshPageScrollLock();
 }
 
 function closeCart() {
   els.cartDrawer.classList.remove("open");
   els.cartDrawer.setAttribute("aria-hidden", "true");
   els.scrim.classList.remove("show");
+  refreshPageScrollLock();
 }
 
 function productStars(product) {
@@ -2052,16 +2125,19 @@ function bindSettings() {
 function closeProfileMenu() {
   els.profileMenu?.classList.remove("open");
   els.profileBtn?.setAttribute("aria-expanded", "false");
+  refreshPageScrollLock();
 }
 
 function closeGuestAccountMenu() {
   els.guestAccountMenu?.classList.remove("open");
   els.authBtn?.setAttribute("aria-expanded", "false");
+  refreshPageScrollLock();
 }
 
 function closeOrdersMenu() {
   els.ordersNavTrigger?.classList.remove("open");
   els.ordersNavTrigger?.setAttribute("aria-expanded", "false");
+  refreshPageScrollLock();
 }
 
 function toggleGuestAccountMenu() {
@@ -2071,6 +2147,7 @@ function toggleGuestAccountMenu() {
     closeProfileMenu();
     closeOrdersMenu();
   }
+  refreshPageScrollLock();
 }
 
 function toggleProfileMenu() {
@@ -2080,6 +2157,7 @@ function toggleProfileMenu() {
     closeGuestAccountMenu();
     closeOrdersMenu();
   }
+  refreshPageScrollLock();
 }
 
 function toggleOrdersMenu() {
@@ -2090,6 +2168,7 @@ function toggleOrdersMenu() {
     closeGuestAccountMenu();
     closeProfileMenu();
   }
+  refreshPageScrollLock();
 }
 
 function helpTopicContent(topic) {
@@ -2537,6 +2616,7 @@ function bindPromoCarousel() {
 
 async function init() {
   initTheme();
+  bindPageScrollLock();
   bindEvents();
   bindPromoCarousel();
   bindAuth();
@@ -2679,12 +2759,14 @@ function initHeaderOverrides() {
     mobileSidebar?.classList.add("open");
     sidebarBackdrop?.classList.add("show");
     mobileMenuToggle?.setAttribute("aria-expanded", "true");
+    refreshPageScrollLock();
   }
   
   function closeMobileSidebar() {
     mobileSidebar?.classList.remove("open");
     sidebarBackdrop?.classList.remove("show");
     mobileMenuToggle?.setAttribute("aria-expanded", "false");
+    refreshPageScrollLock();
   }
   
   mobileMenuToggle?.setAttribute("aria-controls", "mobileSidebar");
