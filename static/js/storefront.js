@@ -1971,10 +1971,14 @@ function bindSettings() {
     event.preventDefault();
     try {
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
-      await api("/api/auth/change-password", {
+      const data = await api("/api/auth/change-password", {
         method: "POST",
         body: JSON.stringify(body)
       });
+      if (data.auth_token) {
+        state.authToken = data.auth_token;
+        localStorage.setItem("mc_auth_token", data.auth_token);
+      }
       event.currentTarget.reset();
       toast("Password changed");
     } catch (error) {

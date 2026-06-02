@@ -741,6 +741,25 @@ def supabase_auth_login(email, password):
         print(f"Supabase login failed: {exc}")
         return None, exc
 
+def supabase_verify_password(email, password):
+    if not supabase:
+        return None, None, RuntimeError("missing Supabase env vars")
+    try:
+        response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        return getattr(response, "user", None), getattr(response, "session", None), None
+    except Exception as exc:
+        print(f"Supabase password verification failed: {exc}")
+        return None, None, exc
+
+def supabase_update_password_for_session(auth_session, new_password):
+    if not supabase:
+        raise RuntimeError("missing Supabase env vars")
+    access_token = getattr(auth_session, "access_token", None)
+    refresh_token = getattr(auth_session, "refresh_token", None)
+    if access_token and refresh_token:
+        supabase.auth.set_session(access_token, refresh_token)
+    return supabase.auth.update_user({"password": new_password})
+
 def client_ip():
     forwarded = request.headers.get("X-Forwarded-For", "")
     return (forwarded.split(",", 1)[0] or request.remote_addr or "unknown").strip()
@@ -2147,39 +2166,45 @@ def api_change_password():
     new_password = data.get("new_password") or ""
     confirm_password = data.get("confirm_password") or ""
 
+    if not current_password:
+        return api_error("Current password is required.")
     if len(new_password) < 6:
         return api_error("Password must be at least 6 characters.")
     if new_password != confirm_password:
         return api_error("New passwords do not match.")
-    
-    if user.password_hash:
-        if not check_password_hash(user.password_hash, current_password):
-            return api_error("Current password is incorrect.", 401)
-    else:
-        if not supabase:
-            return api_error("missing Supabase env vars", 500)
-        try:
-            supabase.auth.sign_in_with_password({"email": user.email, "password": current_password})
-        except Exception:
-            return api_error("Current password is incorrect.", 401)
 
-    if not user.password_hash:
+    local_password_ok = bool(user.password_hash and check_password_hash(user.password_hash, current_password))
+    supabase_password_ok = False
+    supabase_session = None
+    supabase_error = None
+    if supabase:
+        supabase_user, supabase_session, supabase_error = supabase_verify_password(user.email, current_password)
+        supabase_password_ok = bool(supabase_user)
+
+    if not local_password_ok and not supabase_password_ok:
+        return api_error("Current password is incorrect.", 401)
+
+    if supabase_password_ok:
         try:
-            supabase.auth.update_user({"password": new_password})
+            supabase_update_password_for_session(supabase_session, new_password)
         except Exception as exc:
             return api_error(f"Failed to change password: {str(exc)}", 400)
-    else:
-        db = DBSession()
-        try:
-            row = db.query(UserModel).filter_by(id=user.id).first()
-            if row:
-                row.password_hash = generate_password_hash(new_password)
-                row.updated_at = now_utc()
-                db.commit()
-        finally:
-            db.close()
+    elif user.password_hash and supabase_error:
+        print(f"Skipping Supabase password update for local password user {mask_email_for_log(user.email)}: {supabase_error}")
 
-    return api_ok({"message": "Password changed."})
+    db = DBSession()
+    try:
+        row = db.query(UserModel).filter_by(id=user.id).first()
+        if row:
+            row.password_hash = generate_password_hash(new_password)
+            row.updated_at = now_utc()
+            db.commit()
+            session_login_for(row)
+            user = row
+    finally:
+        db.close()
+
+    return api_ok({"message": "Password changed.", "auth_token": make_auth_token(user)})
 
 
 @app.delete("/api/auth/me")
