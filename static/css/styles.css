@@ -5441,3 +5441,218 @@ button {
     padding: 12px;
   }
 }
+
+/* Mobile visual alignment polish. Keeps the Microchip Cart theme intact. */
+@media (max-width: 620px) {
+  body {
+    padding-bottom: 92px;
+  }
+
+  main {
+    padding-inline: 10px;
+  }
+
+  .marketplace-category-strip {
+    grid-auto-columns: minmax(92px, 28vw);
+    gap: 8px;
+    margin-inline: -4px;
+    padding: 10px 8px;
+    border-radius: 14px;
+  }
+
+  .marketplace-category-strip button {
+    min-height: 66px;
+    padding: 8px 6px;
+  }
+
+  .marketplace-category-strip button strong {
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+  }
+
+  .marketplace-hero,
+  .shop-hero {
+    margin-inline: -2px;
+    padding: 10px !important;
+    border-radius: 18px;
+  }
+
+  .promo-carousel-shell {
+    height: clamp(440px, 118vw, 560px);
+    border-radius: 16px;
+  }
+
+  .promo-slide {
+    align-content: start;
+    gap: 14px;
+    padding: 22px 16px 24px;
+    border-radius: 16px;
+  }
+
+  .promo-copy h1 {
+    max-width: 100%;
+    font-size: clamp(32px, 11vw, 44px);
+    line-height: 1.08;
+  }
+
+  .promo-copy p {
+    max-width: 100%;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+
+  .promo-copy .primary-btn {
+    width: fit-content;
+    min-height: 46px;
+    padding-inline: 18px;
+  }
+
+  .promo-nav {
+    top: 42%;
+    width: 42px;
+    height: 52px;
+  }
+
+  .promo-prev {
+    left: 10px;
+  }
+
+  .promo-next {
+    right: 10px;
+  }
+
+  .promo-product-showcase {
+    align-self: end;
+  }
+
+  .marketplace-rail {
+    gap: 10px;
+  }
+
+  .marketplace-rail .hero-metrics {
+    grid-template-columns: 1fr !important;
+    overflow: visible;
+  }
+
+  .marketplace-rail .hero-metrics span {
+    min-height: 72px;
+  }
+
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .toolbar #sortSelect {
+    width: 100%;
+  }
+
+  .product-grid,
+  .products-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+  }
+
+  .product-card {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0;
+    border-radius: 14px;
+  }
+
+  .product-card .product-image {
+    width: 100% !important;
+    max-height: none !important;
+    aspect-ratio: 16 / 9;
+  }
+
+  .product-card .product-image img,
+  .product-card img {
+    width: 100% !important;
+    max-height: none !important;
+  }
+
+  .product-body {
+    padding: 14px;
+  }
+
+  .price-row {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .card-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .card-actions .primary-btn,
+  .card-actions .secondary-btn {
+    width: 100%;
+  }
+
+  .community-live-hub {
+    gap: 14px !important;
+    margin-inline: -2px;
+    padding: 14px !important;
+  }
+
+  .community-categories {
+    grid-template-columns: 1fr !important;
+  }
+
+  .community-live-hub .category-tab::after {
+    display: none;
+  }
+
+  .community-live-panel {
+    max-height: none;
+  }
+
+  .live-thought-feed {
+    max-height: 520px;
+    padding: 14px;
+  }
+
+  .site-footer {
+    margin-top: 22px;
+    padding-bottom: 116px;
+  }
+
+  .chatbot-widget {
+    right: 12px;
+    bottom: 16px;
+    z-index: 80;
+  }
+
+  .chatbot-launcher {
+    min-height: 56px;
+    padding: 12px 18px;
+    border-radius: 999px;
+  }
+}
+
+@media (max-width: 380px) {
+  .promo-carousel-shell {
+    height: 500px;
+  }
+
+  .promo-copy h1 {
+    font-size: 30px;
+  }
+
+  .promo-copy p {
+    font-size: 15px;
+  }
+
+  .chatbot-launcher strong {
+    display: none;
+  }
+
+  .chatbot-launcher {
+    width: 58px;
+    padding: 0;
+  }
+}
