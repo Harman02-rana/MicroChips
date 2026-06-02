@@ -1115,6 +1115,7 @@ def send_email(to_email, subject, text_body, html_body=None):
     port    = int(os.getenv("SMTP_PORT", "587"))
     use_ssl = os.getenv("SMTP_SSL", "false").lower() == "true"
     use_tls = os.getenv("SMTP_TLS", "true").lower()  == "true"
+    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "8"))
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"]    = sender
@@ -1124,12 +1125,12 @@ def send_email(to_email, subject, text_body, html_body=None):
         msg.add_alternative(html_body, subtype="html")
     try:
         if use_ssl:
-            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context()) as s:
+            with smtplib.SMTP_SSL(host, port, timeout=timeout, context=ssl.create_default_context()) as s:
                 if username and password:
                     s.login(username, password)
                 s.send_message(msg)
         else:
-            with smtplib.SMTP(host, port) as s:
+            with smtplib.SMTP(host, port, timeout=timeout) as s:
                 if use_tls:
                     s.starttls(context=ssl.create_default_context())
                 if username and password:
