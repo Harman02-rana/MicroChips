@@ -155,8 +155,9 @@ function toast(message) {
 
 async function api(path, options = {}) {
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-  if (state.authToken && !headers["X-Auth-Token"]) {
-    headers["X-Auth-Token"] = state.authToken;
+  const authToken = state.authToken || localStorage.getItem("mc_auth_token") || "";
+  if (authToken && !headers["X-Auth-Token"]) {
+    headers["X-Auth-Token"] = authToken;
   }
   const res = await fetch(path, {
     credentials: "same-origin",
@@ -170,7 +171,10 @@ async function api(path, options = {}) {
     data = { ok: false, error: res.ok ? "Empty server response" : "Server is temporarily unavailable" };
   }
   if (!data.ok) {
-    throw new Error(data.error || "Request failed");
+    const error = new Error(data.error || "Request failed");
+    error.status = res.status;
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -1177,8 +1181,10 @@ async function loadMe() {
     }
   } catch (error) {
     state.currentUser = null;
-    state.authToken = "";
-    localStorage.removeItem("mc_auth_token");
+    if (error.status === 401 || error.status === 403) {
+      state.authToken = "";
+      localStorage.removeItem("mc_auth_token");
+    }
     console.warn("Could not load current user", error);
   }
   updateAuthUi();
@@ -1742,7 +1748,7 @@ function bindCheckout() {
         items,
         address,
         payment_method: paymentMethod,
-        auth_token: state.authToken || ""
+        auth_token: state.authToken || localStorage.getItem("mc_auth_token") || ""
       };
       if (["Card", "UPI"].includes(paymentMethod)) {
         const paymentData = await api("/api/payments/checkout", {
