@@ -5157,7 +5157,7 @@ button {
     min-width: 0;
   }
 
-  .header-nav-item:not(#cartNavTrigger):not(#wishlistNavTrigger):not(#profileMenu),
+  .header-nav-item:not(#cartNavTrigger):not(#wishlistNavTrigger):not(#profileMenu):not(#guestAccountMenu),
   .desktop-only,
   .desktop-search {
     display: none !important;
@@ -5547,6 +5547,7 @@ button {
   }
 
   #profileMenu,
+  #guestAccountMenu,
   #cartNavTrigger {
     display: inline-flex !important;
     width: 40px;
@@ -5566,6 +5567,46 @@ button {
 
   #profileMenu {
     order: 2;
+  }
+
+  #guestAccountMenu {
+    order: 2;
+  }
+
+  #profileMenu.hidden,
+  #guestAccountMenu.hidden {
+    display: none !important;
+  }
+
+  #authBtn.account-trigger {
+    align-items: center;
+    border-radius: 12px;
+    display: inline-flex;
+    height: 40px;
+    justify-content: center;
+    min-height: 40px;
+    min-width: 40px;
+    padding: 0;
+    width: 40px;
+  }
+
+  #authBtn.account-trigger::before {
+    align-items: center;
+    background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+    border-radius: 14px;
+    color: #020817;
+    content: "\1F464";
+    display: inline-flex;
+    font-size: 17px;
+    font-weight: 900;
+    height: 38px;
+    justify-content: center;
+    width: 38px;
+  }
+
+  #authBtn .nav-item-text,
+  #guestBusinessBtn {
+    display: none !important;
   }
 
   #profileBtn.profile-trigger,
@@ -5845,6 +5886,7 @@ button {
   }
 
   #profileMenu,
+  #guestAccountMenu,
   #cartNavTrigger {
     width: 38px;
     min-width: 38px;
@@ -5853,6 +5895,7 @@ button {
   }
 
   #profileBtn.profile-trigger,
+  #authBtn.account-trigger,
   .nav-item-btn.profile-trigger,
   #profileBtn .profile-avatar-mini {
     width: 38px;
@@ -6393,6 +6436,7 @@ button {
   }
 
   #profileMenu,
+  #guestAccountMenu,
   #cartNavTrigger,
   .mobile-menu-toggle {
     min-width: 38px;
@@ -6438,6 +6482,7 @@ button {
   }
 
   #profileMenu,
+  #guestAccountMenu,
   #cartNavTrigger,
   .mobile-menu-toggle {
     min-width: 36px;
