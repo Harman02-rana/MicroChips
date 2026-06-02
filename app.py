@@ -27,10 +27,16 @@ except Exception:
 
 # ── Supabase Client ───────────────────────────────────────────────────────────
 try:
-    from supabase import create_client
+    from supabase import ClientOptions, create_client
 except Exception as exc:
+    ClientOptions = None
     create_client = None
     print(f"Supabase package unavailable: {exc}")
+
+try:
+    import httpx
+except Exception:
+    httpx = None
 
 SUPABASE_PLACEHOLDERS = {
     "",
@@ -52,9 +58,22 @@ os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
 
 supabase = None
+def supabase_client_options():
+    if not ClientOptions:
+        return None
+    timeout = float(os.getenv("SUPABASE_HTTP_TIMEOUT_SECONDS", "8"))
+    options = {
+        "postgrest_client_timeout": timeout,
+        "storage_client_timeout": int(timeout),
+        "function_client_timeout": int(timeout),
+    }
+    if httpx:
+        options["httpx_client"] = httpx.Client(timeout=timeout)
+    return ClientOptions(**options)
+
 if create_client and supabase_url not in SUPABASE_PLACEHOLDERS and supabase_key not in SUPABASE_PLACEHOLDERS:
     try:
-        supabase = create_client(supabase_url, supabase_key)
+        supabase = create_client(supabase_url, supabase_key, options=supabase_client_options())
         print("Supabase auth connected")
     except Exception as e:
         print("Supabase auth disabled:", e)
@@ -533,7 +552,7 @@ def supabase_admin_client():
     if supabase_url in SUPABASE_PLACEHOLDERS or service_role_key in SUPABASE_PLACEHOLDERS:
         return None
     try:
-        return create_client(supabase_url, service_role_key)
+        return create_client(supabase_url, service_role_key, options=supabase_client_options())
     except Exception as exc:
         print(f"Supabase admin client unavailable: {exc}")
         return None
