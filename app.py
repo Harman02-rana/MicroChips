@@ -67,6 +67,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.pool import NullPool
 from sqlalchemy.types import CHAR, TypeDecorator
 
 def clean_env(value):
@@ -140,9 +141,8 @@ def create_app_engine(database_url):
     return create_engine(
         database_url,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-        connect_args={"connect_timeout": 10},
+        poolclass=NullPool,
+        connect_args={"connect_timeout": 5},
     )
 
 
@@ -2164,7 +2164,9 @@ def api_login_direct():
     except Exception as exc:
         db.rollback()
         print(f"Login failed unexpectedly: {exc}")
-        return api_error(f"Login failed: {str(exc)}", 500)
+        if isinstance(exc, SQLAlchemyError):
+            return api_error("Login is temporarily busy. Please try again in a moment.", 503)
+        return api_error("Login failed. Please try again.", 500)
     finally:
         db.close()
 
