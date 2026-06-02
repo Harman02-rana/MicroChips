@@ -1576,6 +1576,41 @@ def local_email_verification_fallback(email):
         "message": "Email OTP is unavailable on this deployment. Continue with the pre-filled verification code.",
     }
 
+def can_auto_create_test_account():
+    return not supabase and engine.dialect.name == "sqlite" and os.getenv("APP_ENV", "development") != "production"
+
+def create_local_test_user(db, email, password, requested_type):
+    account_type = normalize_account_type(requested_type or "B2C")
+    full_name = email.split("@", 1)[0]
+    user = UserModel(
+        email=email,
+        password_hash=generate_password_hash(password),
+        name=full_name,
+        full_name=full_name,
+        account_type=account_type,
+        role="business" if account_type == "B2B" else "customer",
+        is_admin=False,
+        email_verified=True,
+        phone_verified=False,
+        status="Pending" if account_type == "B2B" else "Active",
+        created_at=now_utc(),
+        updated_at=now_utc(),
+    )
+    db.add(user)
+    db.flush()
+    if account_type == "B2B":
+        db.add(BusinessProfileModel(
+            id=user.id,
+            business_name=full_name,
+            business_address="",
+            contact_number="",
+            gst_number="",
+            approval_status="Pending",
+            created_at=now_utc(),
+            updated_at=now_utc(),
+        ))
+    return user
+
 def verify_app_email_otp(email, otp, otp_token):
     email = normalize_email(email)
     otp = str(otp or "").strip()
@@ -1910,6 +1945,9 @@ def api_login_direct():
     try:
         if not supabase:
             user = db.query(UserModel).filter_by(email=email).first()
+            if not user and can_auto_create_test_account():
+                print(f"LOCAL TEST AUTH: auto-creating fallback account for {mask_email_for_log(email)}")
+                user = create_local_test_user(db, email, password, requested_type)
             if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
                 return api_error("Invalid email or password.", 401)
             if requested_type and normalize_account_type(requested_type) != normalize_account_type(user.account_type):
