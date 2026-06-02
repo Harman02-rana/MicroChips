@@ -622,10 +622,43 @@ function visibleProducts() {
   }));
 }
 
+function catalogCategories() {
+  return ["All", ...new Set(state.products.map(product => product.category).filter(Boolean))];
+}
+
+function renderSearchCategoryOptions() {
+  if (!els.searchCategorySelectDesktop) return;
+  els.searchCategorySelectDesktop.innerHTML = catalogCategories().map(category => `
+    <option value="${escapeHtml(category)}">${category === "All" ? "All Categories" : escapeHtml(category)}</option>
+  `).join("");
+  els.searchCategorySelectDesktop.value = state.category;
+}
+
+function setCategory(category, options = {}) {
+  state.category = category || "All";
+  document.querySelectorAll("[data-home-category]").forEach(button => {
+    button.classList.toggle("active", button.dataset.homeCategory === state.category);
+  });
+  document.querySelectorAll("[data-sidebar-cat]").forEach(button => {
+    button.classList.toggle("active", button.dataset.sidebarCat === state.category);
+  });
+  if (els.searchCategorySelectDesktop) {
+    els.searchCategorySelectDesktop.value = [...els.searchCategorySelectDesktop.options].some(option => option.value === state.category)
+      ? state.category
+      : "All";
+  }
+  renderSearchCategoryOptions();
+  renderCategories();
+  renderProducts();
+  if (options.scrollToProducts) {
+    document.querySelector(".toolbar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
 function renderCategories() {
   if (!els.categoryFilters) return;
-  const categories = ["All", ...new Set(state.products.map(product => product.category).filter(Boolean))];
-  els.categoryFilters.innerHTML = categories.map(category => `
+  renderSearchCategoryOptions();
+  els.categoryFilters.innerHTML = catalogCategories().map(category => `
     <button type="button" class="${category === state.category ? "active" : ""}" data-category="${escapeHtml(category)}">${escapeHtml(category)}</button>
   `).join("");
 }
@@ -634,7 +667,7 @@ function renderProducts() {
   const products = visibleProducts();
   if (els.heroProductCount) els.heroProductCount.textContent = state.products.length;
   renderPopularHero();
-  els.sampleNote.classList.toggle("hidden", !state.products.some(product => product.sample));
+  els.sampleNote?.classList.toggle("hidden", !state.products.some(product => product.sample));
   if (!products.length) {
     els.grid.innerHTML = `<p class="form-help">No products match your search.</p>`;
     return;
@@ -1158,8 +1191,14 @@ function updateAuthUi() {
     if (sidebarLabel) sidebarLabel.textContent = `Hello, ${name}`;
     if (sidebarActions) {
       sidebarActions.innerHTML = `
+        <button type="button" class="sidebar-link" id="sidebarAccountBtn">Your Account</button>
         <button type="button" class="sidebar-link" id="sidebarLogoutBtn" style="color:var(--danger);">Logout</button>
       `;
+      document.querySelector("#sidebarAccountBtn")?.addEventListener("click", () => {
+        document.querySelector("#mobileSidebar")?.classList.remove("open");
+        document.querySelector("#sidebarBackdrop")?.classList.remove("show");
+        showSettings();
+      });
       document.querySelector("#sidebarLogoutBtn")?.addEventListener("click", async () => {
         // Toggle mobile sidebar close
         document.querySelector("#mobileSidebar")?.classList.remove("open");
@@ -1171,8 +1210,8 @@ function updateAuthUi() {
     if (sidebarLabel) sidebarLabel.textContent = "Hello, Sign In";
     if (sidebarActions) {
       sidebarActions.innerHTML = `
-        <button type="button" class="sidebar-link" id="sidebarLoginBtn">Login</button>
-        <button type="button" class="sidebar-link" id="sidebarSignupBtn">Create Account</button>
+        <button type="button" class="sidebar-link" id="sidebarLoginBtn">Login to your account</button>
+        <button type="button" class="sidebar-link" id="sidebarSignupBtn">Create new account</button>
       `;
       document.querySelector("#sidebarLoginBtn")?.addEventListener("click", () => {
         document.querySelector("#mobileSidebar")?.classList.remove("open");
@@ -1529,9 +1568,24 @@ function bindAuth() {
 
 function handleHashRoute() {
   const hash = decodeURIComponent(location.hash || "");
+  const categoryHashMap = {
+    "#microcontrollers": "Microcontroller",
+    "#mcu": "Microcontroller",
+    "#wireless": "Wireless Module",
+    "#sensors": "Sensor",
+    "#sensor": "Sensor",
+    "#power": "Power IC",
+    "#connectors": "Connector",
+    "#boards": "Development Board",
+    "#bulk": "Microcontroller",
+    "#deals": "All"
+  };
   if (hash === "#login") showAuth("login");
   if (hash === "#signup") showAuth("signup");
   if (hash === "#account-settings") showSettings();
+  if (categoryHashMap[hash.toLowerCase()]) {
+    setCategory(categoryHashMap[hash.toLowerCase()], { scrollToProducts: true });
+  }
   if (hash.startsWith("#payment=success")) {
     state.cart = [];
     saveCart();
@@ -2034,9 +2088,7 @@ function bindEvents() {
   els.categoryFilters?.addEventListener("click", event => {
     const button = event.target.closest("[data-category]");
     if (!button) return;
-    state.category = button.dataset.category;
-    renderCategories();
-    renderProducts();
+    setCategory(button.dataset.category);
   });
   els.grid?.addEventListener("click", event => {
     const view = event.target.closest("[data-view-product]");
@@ -2167,13 +2219,7 @@ function bindEvents() {
   document.querySelector(".marketplace-category-strip")?.addEventListener("click", event => {
     const button = event.target.closest("[data-home-category]");
     if (!button) return;
-    state.category = button.dataset.homeCategory;
-    document.querySelectorAll("[data-home-category]").forEach(item => {
-      item.classList.toggle("active", item === button);
-    });
-    renderCategories();
-    renderProducts();
-    document.querySelector(".toolbar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setCategory(button.dataset.homeCategory, { scrollToProducts: true });
   });
 }
 
@@ -2288,6 +2334,19 @@ function initHeaderOverrides() {
     if (locationLookupStatus) locationLookupStatus.textContent = message || "";
   };
 
+  const normalizeIndianStateName = stateName => {
+    const clean = (stateName || "").trim();
+    const aliases = {
+      "Orissa": "Odisha",
+      "Pondicherry": "Puducherry",
+      "NCT of Delhi": "Delhi",
+      "Dadra and Nagar Haveli": "Dadra and Nagar Haveli and Daman and Diu",
+      "Daman and Diu": "Dadra and Nagar Haveli and Daman and Diu",
+      "Jammu & Kashmir": "Jammu and Kashmir"
+    };
+    return aliases[clean] || clean;
+  };
+
   const lookupPincodeLocation = async pincode => {
     if (!/^\d{6}$/.test(pincode)) {
       setLocationLookupStatus("");
@@ -2303,18 +2362,22 @@ function initHeaderOverrides() {
       if (!response.ok) throw new Error("Pincode lookup failed");
       const data = await response.json();
       const result = Array.isArray(data) ? data[0] : null;
-      const postOffice = result?.PostOffice?.[0];
+      const postOffices = Array.isArray(result?.PostOffice) ? result.PostOffice : [];
+      const postOffice = postOffices[0];
       if (!postOffice) throw new Error(result?.Message || "Pincode not found");
 
-      const city = postOffice.District || postOffice.Name || "";
-      const stateName = postOffice.State || "";
+      const area = postOffice.Name || "";
+      const district = postOffice.District || "";
+      const city = [...new Set([area, district].filter(Boolean))].join(", ");
+      const stateName = normalizeIndianStateName(postOffice.State);
       if (locationCityInput) locationCityInput.value = city;
       if (locationStateSelect && stateName) {
         const hasOption = [...locationStateSelect.options].some(option => option.value === stateName);
         locationStateSelect.value = hasOption ? stateName : "Other";
       }
-      setLocationLookupStatus(city && stateName ? `Detected ${city}, ${stateName}.` : "Location detected.");
-      return { city, state: stateName };
+      const moreAreas = postOffices.length > 1 ? ` ${postOffices.length} delivery areas found for this pincode.` : "";
+      setLocationLookupStatus(city && stateName ? `Detected ${city}, ${stateName}.${moreAreas}` : "Location detected.");
+      return { city, area, district, state: stateName };
     } catch (error) {
       if (error.name === "AbortError") return null;
       setLocationLookupStatus("Could not auto-detect this pincode. Select the state manually.");
@@ -2362,27 +2425,42 @@ function initHeaderOverrides() {
   
   const mobileMenuToggle = document.querySelector("#mobileMenuToggle");
   const mobileSidebar = document.querySelector("#mobileSidebar");
+  const sidebarUserInfo = document.querySelector("#sidebarUserInfo");
   const sidebarCloseBtn = document.querySelector("#sidebarCloseBtn");
   const sidebarBackdrop = document.querySelector("#sidebarBackdrop");
   
   function openMobileSidebar() {
     mobileSidebar?.classList.add("open");
     sidebarBackdrop?.classList.add("show");
+    mobileMenuToggle?.setAttribute("aria-expanded", "true");
   }
   
   function closeMobileSidebar() {
     mobileSidebar?.classList.remove("open");
     sidebarBackdrop?.classList.remove("show");
+    mobileMenuToggle?.setAttribute("aria-expanded", "false");
   }
   
+  mobileMenuToggle?.setAttribute("aria-controls", "mobileSidebar");
+  mobileMenuToggle?.setAttribute("aria-expanded", "false");
   mobileMenuToggle?.addEventListener("click", openMobileSidebar);
   sidebarCloseBtn?.addEventListener("click", closeMobileSidebar);
   sidebarBackdrop?.addEventListener("click", closeMobileSidebar);
+  sidebarUserInfo?.addEventListener("click", () => {
+    closeMobileSidebar();
+    if (state.currentUser) {
+      showSettings();
+    } else {
+      showAuth("login", "B2C");
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") closeMobileSidebar();
+  });
   
   const sidebarCategoryList = document.querySelector("#sidebarCategoryList");
   if (sidebarCategoryList) {
-    const categories = ["All", "Microchip", "Wireless", "Sensor", "IC"];
-    sidebarCategoryList.innerHTML = categories.map(cat => `
+    sidebarCategoryList.innerHTML = catalogCategories().map(cat => `
       <button type="button" class="sidebar-link ${cat === state.category ? "active" : ""}" data-sidebar-cat="${cat}">${cat}</button>
     `).join("");
     
@@ -2390,13 +2468,7 @@ function initHeaderOverrides() {
       const btn = e.target.closest("[data-sidebar-cat]");
       if (!btn) return;
       const cat = btn.dataset.sidebarCat;
-      state.category = cat;
-      
-      document.querySelectorAll("[data-sidebar-cat]").forEach(b => b.classList.toggle("active", b.dataset.sidebarCat === cat));
-      document.querySelectorAll("[data-category]").forEach(b => b.classList.toggle("active", b.dataset.category === cat));
-      
-      renderCategories();
-      renderProducts();
+      setCategory(cat, { scrollToProducts: true });
       closeMobileSidebar();
     });
   }
@@ -2468,9 +2540,7 @@ function initHeaderOverrides() {
   searchInputMobile?.addEventListener("keydown", handleSearchKeyboardNavigation);
   
   searchCategorySelectDesktop?.addEventListener("change", (e) => {
-    state.category = e.target.value;
-    renderCategories();
-    renderProducts();
+    setCategory(e.target.value);
   });
 }
 
