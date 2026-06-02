@@ -1974,8 +1974,9 @@ function bindSettings() {
   });
   els.passwordSettingsForm?.addEventListener("submit", async event => {
     event.preventDefault();
+    const form = event.currentTarget;
     try {
-      const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+      const body = Object.fromEntries(new FormData(form).entries());
       if (!await confirmSignedIn()) {
         els.settingsModal?.close();
         showAuth("login");
@@ -2007,7 +2008,7 @@ function bindSettings() {
         state.authToken = data.auth_token;
         localStorage.setItem("mc_auth_token", data.auth_token);
       }
-      event.currentTarget.reset();
+      form.reset();
       toast("Password changed");
     } catch (error) {
       toast(error.message);
