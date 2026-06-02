@@ -1747,7 +1747,7 @@ async function checkout() {
   form.company_name.value = user.company_name || "";
   form.gstin.value = user.gstin || "";
   setBusinessFields(form, "order_type");
-  els.checkoutModal.showModal();
+  if (els.checkoutModal && !els.checkoutModal.open) els.checkoutModal.showModal();
 }
 
 function bindCheckout() {
@@ -1755,10 +1755,19 @@ function bindCheckout() {
   document.querySelector("#checkoutForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Placing...");
     const address = Object.fromEntries(new FormData(form).entries());
     const paymentMethod = address.payment_method;
     delete address.payment_method;
     try {
+      const user = await ensureCurrentUser();
+      if (!user) {
+        state.pendingAuthAction = "checkout";
+        if (els.checkoutModal?.open) els.checkoutModal.close();
+        showAuth("login", "B2C");
+        return;
+      }
       await api("/api/events", {
         method: "POST",
         body: JSON.stringify({ type: "payment_selected", metadata: { payment_method: paymentMethod } })
@@ -1776,13 +1785,9 @@ function bindCheckout() {
         payment_method: paymentMethod,
         auth_token: state.authToken || localStorage.getItem("mc_auth_token") || ""
       };
-      if (["Card", "UPI"].includes(paymentMethod)) {
-        const paymentData = await api("/api/payments/checkout", {
-          method: "POST",
-          body: JSON.stringify(orderPayload)
-        });
-        window.location.assign(paymentData.checkout_url);
-        return;
+      if (!orderPayload.auth_token) {
+        await loadMe();
+        orderPayload.auth_token = state.authToken || localStorage.getItem("mc_auth_token") || "";
       }
       const data = await api("/api/orders", {
         method: "POST",
@@ -1795,7 +1800,17 @@ function bindCheckout() {
       toast(`Order placed: ${data.order.invoice_number}`);
       await loadProducts();
     } catch (error) {
+      if (error.status === 401 && /login/i.test(error.message || "")) {
+        state.currentUser = null;
+        state.pendingAuthAction = "checkout";
+        if (els.checkoutModal?.open) els.checkoutModal.close();
+        showAuth("login", "B2C");
+        toast("Please login again to finish checkout.");
+        return;
+      }
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 }
