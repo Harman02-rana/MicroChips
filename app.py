@@ -880,8 +880,8 @@ def review_to_dict(r: ReviewModel) -> dict:
 def can_delete_community_item(item) -> bool:
     if session.get("admin_logged_in"):
         return True
-    user_id = session.get("user_id")
-    return bool(user_id and str_id(getattr(item, "user_id", None)) == str_id(user_id))
+    user = current_user()
+    return bool(user and str_id(getattr(item, "user_id", None)) == str_id(user.id))
 
 def post_to_dict(p: CommunityPostModel, db) -> dict:
     reply_count = db.query(CommunityReplyModel).filter_by(post_id=p.id).count()
@@ -913,20 +913,29 @@ def reply_to_dict(r: CommunityReplyModel) -> dict:
 
 # ── Session / auth helpers ────────────────────────────────────────────────────
 
-def current_user():
+def request_auth_token(data=None):
+    if data and data.get("auth_token"):
+        return data.get("auth_token")
+    return request.headers.get("X-Auth-Token")
+
+def current_user(auth_token=None):
     user_id = session.get("user_id")
-    if not user_id:
-        return None
-    db = DBSession()
-    try:
-        return db.query(UserModel).filter_by(id=user_id).first()
-    except SQLAlchemyError as exc:
-        print(f"Could not load session user: {exc}")
-        session.pop("user_id", None)
-        session.pop("admin_logged_in", None)
-        return None
-    finally:
-        db.close()
+    if user_id:
+        db = DBSession()
+        try:
+            user = db.query(UserModel).filter_by(id=user_id).first()
+            if user:
+                return user
+            session.pop("user_id", None)
+            session.pop("admin_logged_in", None)
+        except SQLAlchemyError as exc:
+            print(f"Could not load session user: {exc}")
+            session.pop("user_id", None)
+            session.pop("admin_logged_in", None)
+            session.pop("admin_role", None)
+        finally:
+            db.close()
+    return user_from_auth_token(auth_token or request_auth_token())
 
 def auth_token_secret():
     return str(app.secret_key or os.getenv("FLASK_SECRET_KEY") or "microchip-cart").encode("utf-8")
@@ -969,16 +978,14 @@ def user_from_auth_token(token):
     finally:
         db.close()
 
-def require_user():
-    user = current_user()
+def require_user(auth_token=None):
+    user = current_user(auth_token)
     if not user:
         abort(make_response(api_error("Please login first.", 401)[0], 401))
     return user
 
 def require_checkout_user(data):
-    user = current_user() or user_from_auth_token(data.get("auth_token") or request.headers.get("X-Auth-Token"))
-    if not user:
-        abort(make_response(api_error("Please login first.", 401)[0], 401))
+    user = require_user(request_auth_token(data))
     return user
 
 def require_admin():
@@ -2089,7 +2096,7 @@ def api_logout():
 
 @app.get("/api/auth/me")
 def api_me():
-    user = current_user() or user_from_auth_token(request.headers.get("X-Auth-Token"))
+    user = current_user()
     return api_ok({"user": public_user(user), "auth_token": make_auth_token(user) if user else ""})
 
 
@@ -2232,6 +2239,7 @@ def api_products():
 
 @app.get("/api/products/<product_id>")
 def api_product(product_id):
+    user = current_user()
     db = DBSession()
     try:
         product = db.query(ProductModel).filter_by(id=product_id, is_active=True).first()
@@ -2240,7 +2248,7 @@ def api_product(product_id):
         # Track view
         product.views = (product.views or 0) + 1
         db.add(EventModel(type="view", product_id=product.id,
-                          user_id=session.get("user_id")))
+                          user_id=user.id if user else None))
         db.commit()
         reviews = (db.query(ReviewModel)
                      .filter_by(product_id=product.id)
@@ -2444,13 +2452,14 @@ def api_event():
     event_type = data.get("type")
     if event_type not in {"view", "cart_add", "checkout_open", "payment_selected"}:
         return api_error("Unsupported event type.")
+    user = current_user()
     db = DBSession()
     try:
         product_id = data.get("product_id")
         event = EventModel(
             type       = event_type,
             product_id = product_id,
-            user_id    = session.get("user_id"),
+            user_id    = user.id if user else None,
             event_metadata = data.get("metadata") or {},
         )
         db.add(event)

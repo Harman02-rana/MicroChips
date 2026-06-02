@@ -1171,9 +1171,14 @@ async function loadMe() {
     if (data.auth_token) {
       state.authToken = data.auth_token;
       localStorage.setItem("mc_auth_token", data.auth_token);
+    } else if (!state.currentUser) {
+      state.authToken = "";
+      localStorage.removeItem("mc_auth_token");
     }
   } catch (error) {
     state.currentUser = null;
+    state.authToken = "";
+    localStorage.removeItem("mc_auth_token");
     console.warn("Could not load current user", error);
   }
   updateAuthUi();
