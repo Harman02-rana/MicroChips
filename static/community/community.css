@@ -377,6 +377,16 @@ body {
     min-height: 44px;
   }
 
+  .send-signal-form input,
+  .send-signal-form textarea,
+  .send-signal-form select,
+  .live-chat-form input,
+  .community-input-row input,
+  .community-input-row textarea,
+  .community-input-row select {
+    font-size: 16px;
+  }
+
   .live-chat-box {
     max-height: 260px;
   }

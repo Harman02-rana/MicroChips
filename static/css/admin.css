@@ -997,6 +997,12 @@ th {
     min-height: 44px;
   }
 
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
   .table-wrap {
     border-radius: 14px;
     max-width: 100%;

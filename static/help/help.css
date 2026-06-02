@@ -185,6 +185,10 @@ body {
   .help-search-label input {
     min-height: 44px;
   }
+
+  .help-search-label input {
+    font-size: 16px;
+  }
 }
 
 @media (max-width: 480px) {

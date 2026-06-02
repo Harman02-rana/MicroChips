@@ -6475,4 +6475,24 @@ button {
     display: inline-flex !important;
     justify-self: end;
   }
+
+  input,
+  select,
+  textarea,
+  .search-input-field,
+  .search-category-select,
+  .chatbot-form input,
+  .community-post-form input,
+  .community-post-form textarea,
+  .community-post-form select,
+  .reply-input-row input,
+  .reply-text-input {
+    font-size: 16px !important;
+  }
+
+  label,
+  .form-help {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
 }
