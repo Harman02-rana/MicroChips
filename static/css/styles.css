@@ -5448,6 +5448,89 @@ button {
     padding-bottom: 92px;
   }
 
+  .site-header.store-header {
+    padding: 10px 8px;
+  }
+
+  .header-main-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 0;
+  }
+
+  .mobile-menu-toggle {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .store-header .brand {
+    justify-self: start;
+    gap: 8px;
+    min-width: 0;
+    max-width: min(48vw, 190px);
+    padding: 8px 9px;
+  }
+
+  .chip-logo-icon {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+  }
+
+  .store-header .brand-text {
+    min-width: 0;
+  }
+
+  .store-header .brand-text strong {
+    display: block;
+    max-width: 100% !important;
+    font-size: 19px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .store-header .header-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 40px;
+    gap: 6px;
+    align-items: center;
+    justify-content: end;
+  }
+
+  #wishlistNavTrigger {
+    display: none !important;
+  }
+
+  #cartNavTrigger,
+  .theme-toggle-btn {
+    display: inline-flex !important;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  .badge-icon-wrapper {
+    width: 30px;
+    height: 30px;
+  }
+
+  .badge-count {
+    right: -5px;
+    top: -6px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  .header-search-container.mobile-search {
+    padding: 8px 0 0;
+  }
+
   main {
     padding-inline: 10px;
   }
@@ -5635,6 +5718,27 @@ button {
 }
 
 @media (max-width: 380px) {
+  .store-header .brand {
+    max-width: 44vw;
+  }
+
+  .store-header .brand-text strong {
+    font-size: 17px;
+  }
+
+  .store-header .header-actions {
+    grid-auto-columns: 38px;
+    gap: 5px;
+  }
+
+  #cartNavTrigger,
+  .theme-toggle-btn {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
   .promo-carousel-shell {
     height: 500px;
   }
