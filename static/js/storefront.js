@@ -1288,6 +1288,8 @@ function addToCart(productId) {
       id: product.id,
       product_id: product.id,
       name: product.name,
+      sku: product.sku || "",
+      slug: product.slug || "",
       price: product.price,
       image_url: product.image_url,
       quantity: 1
@@ -1334,6 +1336,8 @@ function checkoutItemsFromCart() {
       id: row.product.id,
       product_id: row.product.id,
       name: row.product.name,
+      sku: row.product.sku || "",
+      slug: row.product.slug || "",
       price: row.product.price,
       image_url: row.product.image_url,
       quantity: row.quantity,
@@ -1345,10 +1349,16 @@ function checkoutItemsFromCart() {
     saveCart();
   }
 
-  return repairedCart.map(item => ({
-    product_id: item.product_id,
-    quantity: item.quantity,
-  }));
+  return repairedCart.map(item => {
+    const product = productForCartItem(item);
+    return {
+      product_id: item.product_id,
+      sku: item.sku || product?.sku || "",
+      slug: item.slug || product?.slug || "",
+      name: item.name || product?.name || "",
+      quantity: item.quantity,
+    };
+  });
 }
 
 async function showProduct(productId) {

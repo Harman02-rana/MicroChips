@@ -2478,6 +2478,38 @@ def api_event():
 # ROUTES — Orders (user)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def checkout_lookup(value):
+    return str(value or "").strip().lower()
+
+def resolve_checkout_product(db, entry):
+    pid = str(entry.get("product_id") or entry.get("id") or "").strip()
+    if pid:
+        try:
+            product = db.query(ProductModel).filter_by(id=pid, is_active=True).first()
+            if product:
+                return product
+        except (ValueError, SQLAlchemyError) as exc:
+            db.rollback()
+            print(f"Checkout product id lookup failed for {pid}: {exc}")
+
+    sku = checkout_lookup(entry.get("sku"))
+    slug = checkout_lookup(entry.get("slug"))
+    name = checkout_lookup(entry.get("name"))
+    if not any([sku, slug, name]):
+        return None
+
+    active_products = db.query(ProductModel).filter_by(is_active=True).all()
+    for product in active_products:
+        if sku and checkout_lookup(product.sku) == sku:
+            return product
+    for product in active_products:
+        if slug and checkout_lookup(product.slug) == slug:
+            return product
+    for product in active_products:
+        if name and checkout_lookup(product.name) == name:
+            return product
+    return None
+
 @app.post("/api/orders")
 def api_create_order():
     data = request.get_json(silent=True) or {}
@@ -2490,9 +2522,8 @@ def api_create_order():
     try:
         items = []
         for entry in raw_items:
-            pid      = entry.get("product_id") or entry.get("id")
             quantity = max(1, int(entry.get("quantity") or 1))
-            product  = db.query(ProductModel).filter_by(id=pid, is_active=True).first()
+            product  = resolve_checkout_product(db, entry)
             if not product:
                 return api_error("One product in your cart is not available.")
             if quantity > (product.stock or 0):
