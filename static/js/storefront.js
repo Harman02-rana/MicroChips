@@ -1971,10 +1971,27 @@ function bindSettings() {
     event.preventDefault();
     try {
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
-      const data = await api("/api/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify(body)
-      });
+      if (!state.authToken && !localStorage.getItem("mc_auth_token")) {
+        await loadMe();
+      }
+      body.auth_token = state.authToken || localStorage.getItem("mc_auth_token") || "";
+      let data;
+      try {
+        data = await api("/api/auth/change-password", {
+          method: "POST",
+          body: JSON.stringify(body)
+        });
+      } catch (error) {
+        if (error.status !== 401 || !/login/i.test(error.message || "")) {
+          throw error;
+        }
+        await loadMe();
+        body.auth_token = state.authToken || localStorage.getItem("mc_auth_token") || "";
+        data = await api("/api/auth/change-password", {
+          method: "POST",
+          body: JSON.stringify(body)
+        });
+      }
       if (data.auth_token) {
         state.authToken = data.auth_token;
         localStorage.setItem("mc_auth_token", data.auth_token);

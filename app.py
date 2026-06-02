@@ -2160,8 +2160,8 @@ def api_update_me():
 
 @app.post("/api/auth/change-password")
 def api_change_password():
-    user = require_user()
     data = request.get_json(silent=True) or {}
+    user = require_user(request_auth_token(data))
     current_password = data.get("current_password") or ""
     new_password = data.get("new_password") or ""
     confirm_password = data.get("confirm_password") or ""

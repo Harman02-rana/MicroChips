@@ -7155,3 +7155,12 @@ button {
     height: 4px !important;
   }
 }
+
+/* Keep Microman at the lower mobile edge without changing desktop. */
+@media (max-width: 768px) {
+  .chatbot-widget {
+    right: 16px !important;
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)) !important;
+    z-index: 999 !important;
+  }
+}
