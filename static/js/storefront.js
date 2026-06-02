@@ -12,6 +12,7 @@ const state = {
   authMode: "B2C",
   currentLocation: localStorage.getItem("mc_location") || "India",
   searchIndex: -1,
+  pendingAuthAction: null,
 };
 
 const els = {
@@ -1402,6 +1403,12 @@ function showAuth(tab = "login", mode = state.authMode) {
   els.authModal.showModal();
 }
 
+async function ensureCurrentUser() {
+  if (state.currentUser) return state.currentUser;
+  await loadMe();
+  return state.currentUser;
+}
+
 function authDestination() {
   return (state.currentUser?.account_type || "B2C") === "B2B" ? "/admin" : "/";
 }
@@ -1433,6 +1440,10 @@ function bindAuth() {
     button.addEventListener("click", () => setAuthMode(button.dataset.authMode));
   });
 
+  els.authModal?.addEventListener("close", () => {
+    if (!state.currentUser) state.pendingAuthAction = null;
+  });
+
   document.querySelectorAll("[data-auth-tab]").forEach(button => {
     button.addEventListener("click", () => showAuth(button.dataset.authTab));
   });
@@ -1448,8 +1459,14 @@ function bindAuth() {
       });
       state.currentUser = data.user;
       await loadMe();
+      const pendingAction = state.pendingAuthAction;
+      state.pendingAuthAction = null;
       els.authModal.close();
       toast("Logged in");
+      if (pendingAction === "checkout") {
+        await checkout();
+        return;
+      }
       window.location.assign(data.redirect_url || authDestination());
     } catch (error) {
       toast(error.message);
@@ -1604,19 +1621,21 @@ async function checkout() {
     toast("Cart is empty");
     return;
   }
-  if (!state.currentUser) {
+  const user = await ensureCurrentUser();
+  if (!user) {
+    state.pendingAuthAction = "checkout";
     closeCart();
     showAuth("login", "B2C");
     return;
   }
   await api("/api/events", { method: "POST", body: JSON.stringify({ type: "checkout_open" }) }).catch(() => {});
   const form = document.querySelector("#checkoutForm");
-  form.name.value = state.currentUser.name || "";
-  form.email.value = state.currentUser.email || "";
-  form.phone.value = state.currentUser.phone || "";
-  form.order_type.value = state.currentUser.account_type || "B2C";
-  form.company_name.value = state.currentUser.company_name || "";
-  form.gstin.value = state.currentUser.gstin || "";
+  form.name.value = user.name || "";
+  form.email.value = user.email || "";
+  form.phone.value = user.phone || "";
+  form.order_type.value = user.account_type || "B2C";
+  form.company_name.value = user.company_name || "";
+  form.gstin.value = user.gstin || "";
   setBusinessFields(form, "order_type");
   els.checkoutModal.showModal();
 }
