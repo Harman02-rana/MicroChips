@@ -1,11 +1,21 @@
+function readStoredJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
+    return Array.isArray(fallback) ? (Array.isArray(value) ? value : fallback) : (value && typeof value === "object" ? value : fallback);
+  } catch (error) {
+    localStorage.removeItem(key);
+    return fallback;
+  }
+}
+
 const state = {
   products: [],
   currentUser: null,
-  cart: JSON.parse(localStorage.getItem("mc_cart") || "[]"),
-  wishlist: JSON.parse(localStorage.getItem("mc_wishlist") || "[]"),
-  communityReviews: JSON.parse(localStorage.getItem("mc_community_reviews") || "[]"),
+  cart: readStoredJson("mc_cart", []),
+  wishlist: readStoredJson("mc_wishlist", []),
+  communityReviews: readStoredJson("mc_community_reviews", []),
   communityPosts: [],
-  searchHistory: JSON.parse(localStorage.getItem("mc_search_history") || "[]"),
+  searchHistory: readStoredJson("mc_search_history", []),
   category: "All",
   query: "",
   sort: "featured",
