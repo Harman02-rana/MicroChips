@@ -949,3 +949,108 @@ th {
     min-width: 520px;
   }
 }
+
+/* Mobile responsiveness audit fixes for distributor/owner dashboards only. */
+@media (max-width: 768px) {
+  .admin-shell {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .sidebar {
+    max-width: 100%;
+  }
+
+  .side-nav {
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+
+  .side-nav button {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .admin-toolbar,
+  .filters,
+  .action-row,
+  .form-actions,
+  .card-header {
+    gap: 10px;
+  }
+
+  .admin-search,
+  .admin-toolbar input,
+  .admin-toolbar select,
+  .filters select,
+  .filters input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  .admin-meta a {
+    min-height: 44px;
+  }
+
+  .table-wrap {
+    border-radius: 14px;
+    max-width: 100%;
+  }
+
+  th,
+  td {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-lockup {
+    max-width: 100%;
+  }
+
+  .brand-lockup h1,
+  .brand-lockup strong,
+  .admin-topbar h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .admin-meta span,
+  .admin-meta a {
+    width: 100%;
+  }
+
+  .settings-fieldset {
+    padding: 12px;
+  }
+
+  .settings-fieldset .two-col,
+  .settings-fieldset .form-grid,
+  .dense-form .two-col,
+  .dense-form .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .modal {
+    width: calc(100vw - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+}
+
+@media (max-width: 360px) {
+  .side-nav {
+    gap: 6px;
+  }
+
+  .side-nav button {
+    padding-inline: 10px;
+  }
+
+  .admin-main {
+    padding-bottom: 28px;
+  }
+}

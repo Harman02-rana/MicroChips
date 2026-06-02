@@ -5846,3 +5846,205 @@ button {
     padding: 0;
   }
 }
+
+/* Mobile responsiveness audit fixes: layout-only, preserves desktop design. */
+@media (max-width: 992px) {
+  .header-location {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .site-header.store-header {
+    overflow-x: clip;
+  }
+
+  .site-header.store-header .header-main-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+  }
+
+  .mobile-menu-toggle {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .site-header.store-header .brand {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .site-header.store-header .header-actions {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .header-location {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    background: rgba(11, 27, 52, 0.72);
+    border-color: var(--border);
+  }
+
+  .header-location .location-text,
+  .header-location .location-name {
+    min-width: 0;
+  }
+
+  .header-location .location-locality,
+  .header-location .location-pincode {
+    max-width: calc(100vw - 76px);
+  }
+
+  .modal,
+  .product-modal,
+  .settings-modal {
+    max-height: calc(100dvh - 18px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .auth-mode-switch button,
+  .auth-tabs button,
+  .settings-tabs button,
+  .payment-options label,
+  .account-options label,
+  .checkout-form button,
+  .checkout-form input,
+  .checkout-form select,
+  .checkout-form textarea {
+    min-height: 44px;
+  }
+
+  .product-card h3,
+  .product-card p,
+  .order-card,
+  .cart-item h3,
+  .wishlist-item strong,
+  .wishlist-item span,
+  .settings-panel,
+  .privacy-panel p {
+    overflow-wrap: anywhere;
+  }
+
+  .settings-modal .two-col,
+  .settings-modal .business-fields,
+  .checkout-form .two-col,
+  #locationForm {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-dropdown-menu,
+  .preview-dropdown,
+  .auth-dropdown,
+  .profile-dropdown,
+  .account-dropdown {
+    top: 118px;
+    max-height: calc(100dvh - 132px);
+    overflow-y: auto;
+  }
+
+  .mobile-sidebar {
+    width: min(300px, 92vw);
+  }
+
+  .cart-drawer {
+    width: 100vw;
+    padding: 14px;
+  }
+
+  .cart-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .cart-item-top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .cart-line-total {
+    white-space: normal;
+  }
+
+  .qty-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .qty-row button {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .qty-row [data-cart-remove] {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 40px;
+  }
+
+  .wishlist-item {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+
+  .wishlist-item .secondary-btn,
+  .wishlist-item .icon-btn {
+    grid-column: span 1;
+    width: 100%;
+  }
+
+  .modal,
+  .product-modal,
+  .settings-modal {
+    width: calc(100vw - 12px) !important;
+    padding: 12px;
+  }
+
+  .modal-close-row .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .settings-tabs,
+  .auth-tabs,
+  .auth-mode-switch {
+    gap: 6px;
+  }
+
+  .settings-tabs button,
+  .auth-tabs button,
+  .auth-mode-switch button {
+    padding-inline: 8px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  .site-header.store-header .header-main-row {
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+  }
+
+  .header-location {
+    padding-inline: 8px;
+  }
+
+  .cart-drawer,
+  .modal,
+  .product-modal,
+  .settings-modal {
+    padding: 10px;
+  }
+
+  .product-body,
+  .checkout-form,
+  .auth-panel,
+  .settings-panel.active {
+    gap: 10px;
+  }
+}
