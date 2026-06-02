@@ -1237,6 +1237,11 @@ async function loadMe() {
   updateAuthUi();
 }
 
+async function confirmSignedIn() {
+  await loadMe();
+  return Boolean(state.currentUser && (state.authToken || localStorage.getItem("mc_auth_token")));
+}
+
 function updateAuthUi() {
   const loggedIn = Boolean(state.currentUser);
   
@@ -1971,8 +1976,10 @@ function bindSettings() {
     event.preventDefault();
     try {
       const body = Object.fromEntries(new FormData(event.currentTarget).entries());
-      if (!state.authToken && !localStorage.getItem("mc_auth_token")) {
-        await loadMe();
+      if (!await confirmSignedIn()) {
+        els.settingsModal?.close();
+        showAuth("login");
+        throw new Error("Your login expired. Please log in again.");
       }
       body.auth_token = state.authToken || localStorage.getItem("mc_auth_token") || "";
       let data;
@@ -1985,7 +1992,11 @@ function bindSettings() {
         if (error.status !== 401 || !/login/i.test(error.message || "")) {
           throw error;
         }
-        await loadMe();
+        if (!await confirmSignedIn()) {
+          els.settingsModal?.close();
+          showAuth("login");
+          throw new Error("Your login expired. Please log in again.");
+        }
         body.auth_token = state.authToken || localStorage.getItem("mc_auth_token") || "";
         data = await api("/api/auth/change-password", {
           method: "POST",

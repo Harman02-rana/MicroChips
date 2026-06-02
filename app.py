@@ -182,6 +182,7 @@ class Base(DeclarativeBase):
 class UserModel(Base):
     __tablename__ = "users"
     id             = Column(GUID(), primary_key=True, default=uuid.uuid4)
+    auth_user_id   = Column(GUID(), nullable=True)
     email          = Column(String(255), unique=True, nullable=False)
     phone          = Column(String(30), unique=True, nullable=True)
     password_hash  = Column(Text, nullable=True)
@@ -312,6 +313,8 @@ def ensure_compatible_schema():
         return
     ddl_statements = [
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_user_id UUID",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type VARCHAR(10) DEFAULT 'B2C'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS gstin VARCHAR(30)",
@@ -361,6 +364,8 @@ def ensure_sqlite_schema():
         return
     ddl_statements = [
         "ALTER TABLE users ADD COLUMN account_type VARCHAR(10) DEFAULT 'B2C'",
+        "ALTER TABLE users ADD COLUMN auth_user_id CHAR(36)",
+        "ALTER TABLE users ADD COLUMN password_hash TEXT",
         "ALTER TABLE users ADD COLUMN company_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN gstin VARCHAR(30)",
         "ALTER TABLE users ADD COLUMN role VARCHAR(30) DEFAULT 'customer'",
@@ -576,6 +581,58 @@ def supabase_find_auth_user_by_email(email):
     except Exception as exc:
         print(f"Could not list Supabase Auth users: {exc}")
         return None
+
+def supabase_find_auth_user_by_id(user_id):
+    user_id = str_id(user_id)
+    if not user_id:
+        return None
+    admin_client = supabase_admin_client()
+    if not admin_client:
+        return None
+    try:
+        response = admin_client.auth.admin.get_user_by_id(user_id)
+        return supabase_response_user(response)
+    except Exception as exc:
+        print(f"Could not load Supabase Auth user by id: {exc}")
+        return None
+
+def linked_auth_user_id(user):
+    return str_id(getattr(user, "auth_user_id", None) or getattr(user, "id", None))
+
+def supabase_verify_password_for_user(user, password):
+    if not supabase or not user:
+        return None, None, RuntimeError("missing Supabase env vars")
+
+    emails_to_try = []
+    primary_email = normalize_email(getattr(user, "email", ""))
+    if primary_email:
+        emails_to_try.append(primary_email)
+
+    auth_user = supabase_find_auth_user_by_id(getattr(user, "auth_user_id", None))
+    auth_email = auth_user_email(auth_user)
+    if auth_email and auth_email not in emails_to_try:
+        emails_to_try.append(auth_email)
+
+    email_auth_user = None
+    if primary_email:
+        email_auth_user = supabase_find_auth_user_by_email(primary_email)
+        email_auth_id = str_id(auth_user_id(email_auth_user))
+        if email_auth_id and str_id(getattr(user, "auth_user_id", None)) != email_auth_id:
+            user.auth_user_id = email_auth_id
+        email_auth_email = auth_user_email(email_auth_user)
+        if email_auth_email and email_auth_email not in emails_to_try:
+            emails_to_try.append(email_auth_email)
+
+    last_error = None
+    for email in emails_to_try:
+        supabase_user, supabase_session, error = supabase_verify_password(email, password)
+        if supabase_user:
+            if str_id(getattr(user, "auth_user_id", None)) != str_id(auth_user_id(supabase_user)):
+                user.auth_user_id = auth_user_id(supabase_user)
+            return supabase_user, supabase_session, None
+        last_error = error
+
+    return None, None, last_error
 
 def supabase_prepare_email_otp_user(email):
     auth_user = supabase_find_auth_user_by_email(email)
@@ -943,6 +1000,8 @@ def current_user(auth_token=None):
         db = DBSession()
         try:
             user = db.query(UserModel).filter_by(id=user_id).first()
+            if not user:
+                user = db.query(UserModel).filter_by(auth_user_id=user_id).first()
             if user:
                 return user
             session.pop("user_id", None)
@@ -991,6 +1050,8 @@ def user_from_auth_token(token):
     db = DBSession()
     try:
         user = db.query(UserModel).filter_by(id=user_id).first()
+        if not user:
+            user = db.query(UserModel).filter_by(auth_user_id=user_id).first()
         if user:
             session_login_for(user)
         return user
@@ -1771,18 +1832,15 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
         user = UserModel(email=email, created_at=getattr(auth_user, "created_at", now_utc()))
         if auth_id:
             user.id = auth_id
+            user.auth_user_id = auth_id
         db.add(user)
-    elif auth_id and str_id(user.id) != str_id(auth_id):
-        old_id = user.id
-        profile = db.query(BusinessProfileModel).filter_by(id=old_id).first()
-        if profile:
-            profile.id = auth_id
-        user.id = auth_id
+    elif auth_id:
+        user.auth_user_id = auth_id
 
     user.name = full_name
     user.full_name = full_name
     user.phone = phone
-    user.password_hash = generate_password_hash(data["password"]) if store_password else None
+    user.password_hash = generate_password_hash(data["password"])
     user.account_type = account_type
     user.role = role
     user.company_name = data.get("company_name") if account_type == "B2B" else None
@@ -2052,9 +2110,11 @@ def api_login_direct():
 
         user = db.query(UserModel).filter_by(id=auth_user.id).first()
         if not user:
+            user = db.query(UserModel).filter_by(auth_user_id=auth_user.id).first()
+        if not user:
             user = db.query(UserModel).filter_by(email=email).first()
             if user:
-                user.id = auth_user.id
+                user.auth_user_id = auth_user.id
                 db.flush()
 
         email_verified = bool(getattr(auth_user, "email_confirmed_at", None))
@@ -2064,9 +2124,10 @@ def api_login_direct():
         if not user:
             user = UserModel(
                 id=auth_user.id,
+                auth_user_id=auth_user.id,
                 email=email,
                 phone=auth_user.phone or None,
-                password_hash=None,
+                password_hash=generate_password_hash(password),
                 name=email.split("@", 1)[0],
                 full_name=email.split("@", 1)[0],
                 account_type=account_type,
@@ -2079,10 +2140,11 @@ def api_login_direct():
             db.add(user)
             db.flush()
         else:
+            user.auth_user_id = auth_user.id
             user.email_verified = email_verified
             if not user.role:
                 user.role = role
-            user.password_hash = None
+            user.password_hash = generate_password_hash(password)
 
         if not user.email_verified and not getattr(user, "is_admin", False):
             db.rollback()
@@ -2176,9 +2238,10 @@ def api_change_password():
     local_password_ok = bool(user.password_hash and check_password_hash(user.password_hash, current_password))
     supabase_password_ok = False
     supabase_session = None
+    supabase_user = None
     supabase_error = None
     if supabase:
-        supabase_user, supabase_session, supabase_error = supabase_verify_password(user.email, current_password)
+        supabase_user, supabase_session, supabase_error = supabase_verify_password_for_user(user, current_password)
         supabase_password_ok = bool(supabase_user)
 
     if not local_password_ok and not supabase_password_ok:
@@ -2189,13 +2252,24 @@ def api_change_password():
             supabase_update_password_for_session(supabase_session, new_password)
         except Exception as exc:
             return api_error(f"Failed to change password: {str(exc)}", 400)
-    elif user.password_hash and supabase_error:
-        print(f"Skipping Supabase password update for local password user {mask_email_for_log(user.email)}: {supabase_error}")
+    elif local_password_ok and supabase:
+        auth_id = linked_auth_user_id(user)
+        auth_user = supabase_find_auth_user_by_id(auth_id)
+        if auth_user:
+            ok, admin_error = supabase_set_user_password(auth_user_id(auth_user), new_password, supabase_user_metadata(auth_user))
+            if not ok:
+                return api_error(f"Failed to change password: {admin_error}", 400)
+        elif supabase_error:
+            print(f"Skipping Supabase password update for local password user {mask_email_for_log(user.email)}: {supabase_error}")
 
     db = DBSession()
     try:
         row = db.query(UserModel).filter_by(id=user.id).first()
+        if not row:
+            row = db.query(UserModel).filter_by(auth_user_id=linked_auth_user_id(user)).first()
         if row:
+            if getattr(user, "auth_user_id", None) and not row.auth_user_id:
+                row.auth_user_id = user.auth_user_id
             row.password_hash = generate_password_hash(new_password)
             row.updated_at = now_utc()
             db.commit()
