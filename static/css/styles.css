@@ -5521,6 +5521,7 @@ button {
     display: none !important;
   }
 
+  #profileMenu,
   #cartNavTrigger,
   .theme-toggle-btn {
     display: inline-flex !important;
@@ -5529,6 +5530,37 @@ button {
     height: 40px;
     min-height: 40px;
     padding: 0;
+  }
+
+  #cartNavTrigger {
+    order: 1;
+  }
+
+  #profileMenu {
+    order: 2;
+  }
+
+  .theme-toggle-btn {
+    order: 3;
+  }
+
+  #profileBtn.profile-trigger,
+  .nav-item-btn.profile-trigger {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+  }
+
+  #profileBtn .profile-avatar-mini {
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
+
+  #profileBtn .nav-item-text {
+    display: none !important;
   }
 
   .badge-icon-wrapper {
@@ -5788,8 +5820,18 @@ button {
     gap: 5px;
   }
 
+  #profileMenu,
   #cartNavTrigger,
   .theme-toggle-btn {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  #profileBtn.profile-trigger,
+  .nav-item-btn.profile-trigger,
+  #profileBtn .profile-avatar-mini {
     width: 38px;
     min-width: 38px;
     height: 38px;
@@ -6327,6 +6369,7 @@ button {
     grid-auto-columns: 38px;
   }
 
+  #profileMenu,
   #cartNavTrigger,
   .theme-toggle-btn,
   .mobile-menu-toggle {
@@ -6372,11 +6415,22 @@ button {
     gap: 4px;
   }
 
+  #profileMenu,
   #cartNavTrigger,
   .theme-toggle-btn,
   .mobile-menu-toggle {
     min-width: 36px;
     min-height: 36px;
+  }
+
+  #profileBtn.profile-trigger,
+  .nav-item-btn.profile-trigger,
+  #profileBtn .profile-avatar-mini {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    font-size: 15px;
   }
 
   .marketplace-category-strip {
