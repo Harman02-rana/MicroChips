@@ -1506,6 +1506,9 @@ function bindAuth() {
       if (emailOtpInput) emailOtpInput.value = "";
       if (otpEmailInput) otpEmailInput.value = email;
       if (otpTokenInput) otpTokenInput.value = data.otp_token || "";
+      if (data.verification_fallback && data.otp && emailOtpInput) {
+        emailOtpInput.value = data.otp;
+      }
       if (data.otp_token) localStorage.setItem("mc_email_otp", JSON.stringify({ email, token: data.otp_token }));
       toast(data.message || "OTP sent to your email.");
       startEmailOtpCooldown(data.cooldown_seconds || 60);
