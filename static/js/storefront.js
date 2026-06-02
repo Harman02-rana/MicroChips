@@ -10,6 +10,7 @@ const state = {
   query: "",
   sort: "featured",
   authMode: "B2C",
+  authToken: localStorage.getItem("mc_auth_token") || "",
   currentLocation: localStorage.getItem("mc_location") || "India",
   searchIndex: -1,
   pendingAuthAction: null,
@@ -154,6 +155,7 @@ function toast(message) {
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options
   });
@@ -1162,6 +1164,10 @@ async function loadMe() {
   try {
     const data = await api("/api/auth/me");
     state.currentUser = data.user || null;
+    if (data.auth_token) {
+      state.authToken = data.auth_token;
+      localStorage.setItem("mc_auth_token", data.auth_token);
+    }
   } catch (error) {
     state.currentUser = null;
     console.warn("Could not load current user", error);
@@ -1507,6 +1513,10 @@ function bindAuth() {
         body: JSON.stringify(body)
       });
       state.currentUser = data.user;
+      if (data.auth_token) {
+        state.authToken = data.auth_token;
+        localStorage.setItem("mc_auth_token", data.auth_token);
+      }
       await loadMe();
       const pendingAction = state.pendingAuthAction;
       state.pendingAuthAction = null;
@@ -1712,7 +1722,8 @@ function bindCheckout() {
       const orderPayload = {
         items,
         address,
-        payment_method: paymentMethod
+        payment_method: paymentMethod,
+        auth_token: state.authToken || ""
       };
       if (["Card", "UPI"].includes(paymentMethod)) {
         const paymentData = await api("/api/payments/checkout", {
@@ -1797,6 +1808,8 @@ function showSettings() {
 async function logout() {
   await api("/api/auth/logout", { method: "POST", body: "{}" });
   state.currentUser = null;
+  state.authToken = "";
+  localStorage.removeItem("mc_auth_token");
   await loadMe();
   toast("Logged out");
 }
@@ -1861,8 +1874,10 @@ function bindSettings() {
         body: JSON.stringify(body)
       });
       state.currentUser = null;
+      state.authToken = "";
       state.cart = [];
       state.wishlist = [];
+      localStorage.removeItem("mc_auth_token");
       localStorage.removeItem("mc_cart");
       localStorage.removeItem("mc_wishlist");
       els.settingsModal.close();

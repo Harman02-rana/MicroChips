@@ -928,8 +928,55 @@ def current_user():
     finally:
         db.close()
 
+def auth_token_secret():
+    return str(app.secret_key or os.getenv("FLASK_SECRET_KEY") or "microchip-cart").encode("utf-8")
+
+def make_auth_token(user, max_age_seconds=60 * 60 * 24 * 14):
+    if not user:
+        return ""
+    payload = {
+        "user_id": str_id(user.id),
+        "exp": int((now_utc() + timedelta(seconds=max_age_seconds)).timestamp()),
+    }
+    body = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii").rstrip("=")
+    sig = hmac.new(auth_token_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+    return f"{body}.{sig}"
+
+def user_from_auth_token(token):
+    token = (token or "").strip()
+    if "." not in token:
+        return None
+    body, sig = token.rsplit(".", 1)
+    expected = hmac.new(auth_token_secret(), body.encode("ascii"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return None
+    try:
+        padded = body + ("=" * (-len(body) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception:
+        return None
+    if int(payload.get("exp") or 0) < int(now_utc().timestamp()):
+        return None
+    user_id = payload.get("user_id")
+    if not user_id:
+        return None
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(id=user_id).first()
+        if user:
+            session_login_for(user)
+        return user
+    finally:
+        db.close()
+
 def require_user():
     user = current_user()
+    if not user:
+        abort(make_response(api_error("Please login first.", 401)[0], 401))
+    return user
+
+def require_checkout_user(data):
+    user = current_user() or user_from_auth_token(data.get("auth_token"))
     if not user:
         abort(make_response(api_error("Please login first.", 401)[0], 401))
     return user
@@ -1960,7 +2007,7 @@ def api_login_direct():
             db.commit()
             db.refresh(user)
             session_login_for(user)
-            return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)})
+            return api_ok({"user": public_user(user), "auth_token": make_auth_token(user), "redirect_url": auth_redirect_url(user)})
 
         try:
             res = supabase.auth.sign_in_with_password({
@@ -2019,7 +2066,7 @@ def api_login_direct():
         db.commit()
         db.refresh(user)
         session_login_for(user)
-        return api_ok({"user": public_user(user), "redirect_url": auth_redirect_url(user)})
+        return api_ok({"user": public_user(user), "auth_token": make_auth_token(user), "redirect_url": auth_redirect_url(user)})
     except Exception as exc:
         db.rollback()
         print(f"Login failed unexpectedly: {exc}")
@@ -2042,7 +2089,8 @@ def api_logout():
 
 @app.get("/api/auth/me")
 def api_me():
-    return api_ok({"user": public_user(current_user())})
+    user = current_user()
+    return api_ok({"user": public_user(user), "auth_token": make_auth_token(user) if user else ""})
 
 
 @app.patch("/api/auth/me")
@@ -2423,8 +2471,8 @@ def api_event():
 
 @app.post("/api/orders")
 def api_create_order():
-    user = require_user()
     data = request.get_json(silent=True) or {}
+    user = require_checkout_user(data)
     raw_items = data.get("items") or []
     if not raw_items:
         return api_error("Cart is empty.")
