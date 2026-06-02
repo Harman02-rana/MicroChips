@@ -41,11 +41,32 @@ function toast(message) {
 async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const res = await fetch(path, {
+    credentials: "same-origin",
     headers: isFormData ? (options.headers || {}) : { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options
   });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || "Request failed");
+  let data;
+  try {
+    data = await res.json();
+  } catch (parseError) {
+    const error = new Error(
+      res.status === 401 || res.status === 403
+        ? "Admin session expired. Please login again."
+        : "Server returned an invalid response. Please refresh and try again."
+    );
+    error.status = res.status;
+    if (res.status === 401 || res.status === 403) {
+      setTimeout(() => {
+        if (location.pathname.startsWith("/admin")) location.href = "/admin/login";
+      }, 700);
+    }
+    throw error;
+  }
+  if (!data.ok) {
+    const error = new Error(data.error || "Request failed");
+    error.status = res.status;
+    throw error;
+  }
   return data;
 }
 

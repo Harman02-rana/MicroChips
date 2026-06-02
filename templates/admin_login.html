@@ -28,21 +28,42 @@
     <script>
       const form = document.querySelector("#adminLoginForm");
       const toast = document.querySelector("#toast");
+      const submit = form.querySelector("[type='submit']");
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add("show");
+        setTimeout(() => toast.classList.remove("show"), 2600);
+      }
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (form.dataset.busy === "true") return;
+        form.dataset.busy = "true";
+        submit.disabled = true;
+        const defaultText = submit.textContent;
+        submit.textContent = "Logging in...";
         const body = Object.fromEntries(new FormData(form).entries());
-        const res = await fetch("/api/admin/login", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(body)
-        });
-        const data = await res.json();
-        if (data.ok) {
-          location.href = "/admin";
-        } else {
-          toast.textContent = data.error || "Login failed";
-          toast.classList.add("show");
-          setTimeout(() => toast.classList.remove("show"), 2600);
+        try {
+          const res = await fetch("/api/admin/login", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(body)
+          });
+          const data = await res.json().catch(() => ({
+            ok: false,
+            error: "Server returned an invalid response. Please refresh and try again."
+          }));
+          if (data.ok) {
+            location.href = "/admin";
+            return;
+          }
+          showToast(data.error || "Login failed");
+        } catch (error) {
+          showToast(error.message || "Login failed");
+        } finally {
+          form.dataset.busy = "false";
+          submit.disabled = false;
+          submit.textContent = defaultText;
         }
       });
     </script>
