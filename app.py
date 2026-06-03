@@ -1207,12 +1207,15 @@ def allowed_image(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
 def next_product_image_path():
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     used = set()
-    for img in UPLOAD_DIR.glob("*.webp"):
-        m = re.fullmatch(r"(\d+)\.webp", img.name)
-        if m:
-            used.add(int(m.group(1)))
+    try:
+        if UPLOAD_DIR.exists():
+            for img in UPLOAD_DIR.glob("*.webp"):
+                m = re.fullmatch(r"(\d+)\.webp", img.name)
+                if m:
+                    used.add(int(m.group(1)))
+    except OSError as exc:
+        print(f"Could not inspect product upload directory: {exc}")
     db = DBSession()
     try:
         for p in db.query(ProductModel).all():
@@ -1241,7 +1244,12 @@ def save_product_image(file_storage):
         raise ValueError("Product image must be a .webp file.")
     suggestion  = next_product_image_path()
     destination = UPLOAD_DIR / suggestion["filename"]
-    file_storage.save(destination)
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        file_storage.save(destination)
+    except OSError as exc:
+        print(f"Product image upload failed: {exc}")
+        raise ValueError("Product image storage is unavailable on this deployment. Use an image URL instead.")
     return suggestion["web_path"]
 
 
