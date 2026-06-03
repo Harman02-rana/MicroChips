@@ -1914,7 +1914,7 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     auth_id = auth_user_id(auth_user)
 
     existing = db.query(UserModel).filter_by(email=email).first()
-    if existing and existing.email_verified:
+    if existing and existing.email_verified and existing.password_hash:
         return None, "This email already has an account."
     if phone:
         phone_user = db.query(UserModel).filter(UserModel.phone == phone).first()
@@ -2314,7 +2314,8 @@ def api_login_direct():
             session_login_for(local_user)
             return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
 
-        if not supabase or not SUPABASE_AUTH_LOGIN_FALLBACK:
+        should_try_supabase_auth = bool(supabase and local_user and not local_user.password_hash)
+        if not supabase or (not SUPABASE_AUTH_LOGIN_FALLBACK and not should_try_supabase_auth):
             user = local_user
             if not user and can_auto_create_test_account():
                 print(f"LOCAL TEST AUTH: auto-creating fallback account for {mask_email_for_log(email)}")
