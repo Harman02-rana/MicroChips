@@ -59,7 +59,8 @@ os.environ.pop("HTTPS_PROXY", None)
 
 supabase = None
 supabase_admin = None
-def supabase_client_options():
+supabase_oauth = None
+def supabase_client_options(flow_type=None):
     if not ClientOptions:
         return None
     timeout = float(os.getenv("SUPABASE_HTTP_TIMEOUT_SECONDS", "8"))
@@ -68,6 +69,8 @@ def supabase_client_options():
         "storage_client_timeout": int(timeout),
         "function_client_timeout": int(timeout),
     }
+    if flow_type:
+        options["flow_type"] = flow_type
     if httpx:
         options["httpx_client"] = httpx.Client(timeout=timeout)
     return ClientOptions(**options)
@@ -589,6 +592,111 @@ def supabase_admin_client():
     except Exception as exc:
         print(f"Supabase admin client unavailable: {exc}")
         return None
+
+def supabase_oauth_client():
+    global supabase_oauth
+    if supabase_oauth:
+        return supabase_oauth
+    if not create_client or supabase_url in SUPABASE_PLACEHOLDERS or supabase_key in SUPABASE_PLACEHOLDERS:
+        return None
+    try:
+        supabase_oauth = create_client(supabase_url, supabase_key, options=supabase_client_options("implicit"))
+        return supabase_oauth
+    except Exception as exc:
+        print(f"Supabase OAuth client unavailable: {exc}")
+        return None
+
+def public_base_url():
+    configured = clean_env(os.getenv("PUBLIC_BASE_URL"))
+    if configured:
+        return configured.rstrip("/")
+    return request.host_url.rstrip("/")
+
+def google_oauth_callback_url():
+    return f"{public_base_url()}/auth/google/callback"
+
+def oauth_response_url(response):
+    if isinstance(response, dict):
+        return response.get("url") or response.get("data", {}).get("url")
+    return getattr(response, "url", None)
+
+def auth_response_session_user(response):
+    auth_session = getattr(response, "session", None)
+    auth_user = getattr(response, "user", None)
+    data = getattr(response, "data", None)
+    if data:
+        auth_session = auth_session or getattr(data, "session", None)
+        auth_user = auth_user or getattr(data, "user", None)
+    if isinstance(response, dict):
+        auth_session = response.get("session") or response.get("data", {}).get("session")
+        auth_user = response.get("user") or response.get("data", {}).get("user")
+    if auth_session and not auth_user:
+        auth_user = getattr(auth_session, "user", None)
+        if isinstance(auth_session, dict):
+            auth_user = auth_session.get("user")
+    return auth_session, auth_user
+
+def oauth_user_profile(auth_user):
+    email = auth_user_email(auth_user)
+    metadata = supabase_user_metadata(auth_user)
+    full_name = (
+        metadata.get("full_name")
+        or metadata.get("name")
+        or metadata.get("display_name")
+        or (email.split("@", 1)[0] if email else "Google user")
+    )
+    return email, str(full_name).strip()
+
+def create_or_update_oauth_user(db, auth_user, account_type="B2C"):
+    auth_id = auth_user_id(auth_user)
+    email, full_name = oauth_user_profile(auth_user)
+    if not auth_id or not email:
+        return None, "Google did not return a verified email. Please use email signup."
+
+    account_type = normalize_account_type(account_type)
+    role = "business" if account_type == "B2B" else "customer"
+    user = db.query(UserModel).filter_by(auth_user_id=auth_id).first()
+    if not user:
+        user = db.query(UserModel).filter_by(id=auth_id).first()
+    if not user:
+        user = db.query(UserModel).filter_by(email=email).first()
+        if user:
+            user.auth_user_id = auth_id
+            db.flush()
+
+    if not user:
+        user = UserModel(
+            id=auth_id,
+            auth_user_id=auth_id,
+            email=email,
+            name=full_name,
+            full_name=full_name,
+            account_type=account_type,
+            role=role,
+            is_admin=False,
+            email_verified=True,
+            status="Active",
+            created_at=as_utc(getattr(auth_user, "created_at", None)) or now_utc(),
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.auth_user_id = auth_id
+        user.email = user.email or email
+        if not user.name:
+            user.name = full_name
+        if not user.full_name:
+            user.full_name = full_name
+        if not user.account_type:
+            user.account_type = account_type
+        if not user.role:
+            user.role = role
+        user.email_verified = True
+        user.status = user.status or "Active"
+        user.updated_at = now_utc()
+
+    user.last_login = now_utc()
+    return user, None
 
 def auth_user_id(auth_user):
     if isinstance(auth_user, dict):
@@ -1599,6 +1707,140 @@ def login_page():
 @app.get("/signup")
 def signup_page():
     return redirect("/#signup")
+
+@app.get("/api/auth/google/start")
+def api_google_oauth_start():
+    oauth_client = supabase_oauth_client()
+    if not oauth_client:
+        return api_error("Google signup needs Supabase Auth configuration.", 503)
+
+    account_type = normalize_account_type(request.args.get("account_type") or "B2C")
+    session["oauth_account_type"] = account_type
+    try:
+        response = oauth_client.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": google_oauth_callback_url(),
+                "query_params": {
+                    "access_type": "offline",
+                    "prompt": "consent",
+                },
+            },
+        })
+        auth_url = oauth_response_url(response)
+        if not auth_url:
+            return api_error("Google signup could not be started.", 502)
+        return redirect(auth_url)
+    except Exception as exc:
+        print(f"Google OAuth start failed: {exc}")
+        return api_error("Google signup is temporarily unavailable.", 502)
+
+@app.get("/auth/google/callback")
+def google_oauth_callback_page():
+    return """
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Completing Google signup...</title>
+    <style>
+      body { align-items: center; background: #020817; color: #f8fafc; display: grid; font-family: Inter, system-ui, sans-serif; min-height: 100vh; margin: 0; padding: 24px; }
+      main { border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 8px; background: #071426; max-width: 460px; padding: 24px; width: 100%; }
+      h1 { font-size: 22px; margin: 0 0 8px; }
+      p { color: #94a3b8; line-height: 1.5; margin: 0; }
+      a { color: #22e3ff; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Completing Google signup...</h1>
+      <p id="status">Please wait while we finish setting up your MicroChip Cart account.</p>
+    </main>
+    <script>
+      (async () => {
+        const status = document.querySelector("#status");
+        const query = new URLSearchParams(window.location.search);
+        const hash = new URLSearchParams((window.location.hash || "").replace(/^#/, ""));
+        const error = query.get("error_description") || hash.get("error_description") || query.get("error") || hash.get("error");
+        if (error) {
+          status.innerHTML = "Google signup failed. <a href='/?google_oauth=failed#signup'>Try again</a>.";
+          return;
+        }
+        const payload = {
+          code: query.get("code") || "",
+          access_token: hash.get("access_token") || "",
+          refresh_token: hash.get("refresh_token") || "",
+        };
+        try {
+          const response = await fetch("/api/auth/google/session", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const data = await response.json();
+          if (!response.ok || data.success !== true) throw new Error(data.error || "Google signup failed.");
+          if (data.auth_token) localStorage.setItem("mc_auth_token", data.auth_token);
+          window.location.replace(data.redirect_url || "/");
+        } catch (err) {
+          status.innerHTML = (err.message || "Google signup failed.") + " <a href='/?google_oauth=failed#signup'>Try again</a>.";
+        }
+      })();
+    </script>
+  </body>
+</html>
+"""
+
+@app.post("/api/auth/google/session")
+def api_google_oauth_session():
+    if not supabase:
+        return api_error("Google signup needs Supabase Auth configuration.", 503)
+
+    data = request.get_json(silent=True) or {}
+    access_token = data.get("access_token") or ""
+    refresh_token = data.get("refresh_token") or ""
+    auth_code = data.get("code") or ""
+
+    try:
+        if access_token and refresh_token:
+            response = supabase.auth.set_session(access_token, refresh_token)
+        elif auth_code:
+            response = supabase.auth.exchange_code_for_session({"auth_code": auth_code})
+        else:
+            return api_error("Google did not return a login session.", 400)
+        _, auth_user = auth_response_session_user(response)
+    except Exception as exc:
+        print(f"Google OAuth session exchange failed: {exc}")
+        return api_error("Google signup could not be verified.", 401)
+
+    if not auth_user:
+        return api_error("Google signup could not load your profile.", 401)
+
+    db = DBSession()
+    try:
+        user, user_error = create_or_update_oauth_user(
+            db,
+            auth_user,
+            session.pop("oauth_account_type", "B2C"),
+        )
+        if user_error:
+            db.rollback()
+            return api_error(user_error, 400)
+        if (user.status or "Active") not in ("Active", "Pending"):
+            db.rollback()
+            return api_error("This account is not active. Please contact support.", 403)
+        db.commit()
+        db.refresh(user)
+        session_login_for(user)
+        token = make_auth_token(user)
+        return api_ok({"user": public_user(user), "auth_token": token, "redirect_url": auth_redirect_url(user)})
+    except Exception as exc:
+        db.rollback()
+        print(f"Google OAuth user setup failed: {exc}")
+        return api_error("Google signup could not finish. Please try again.", 500)
+    finally:
+        db.close()
 
 @app.get("/admin")
 def admin_page():

@@ -1805,6 +1805,9 @@ function bindAuth() {
 
   const signupForm = document.querySelector("#signupForm");
   const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
+  const googleSignupBtn = document.querySelector("#googleSignupBtn");
+  const referralToggleBtn = document.querySelector("#referralToggleBtn");
+  const referralCodeField = document.querySelector("#referralCodeField");
   const emailOtpLength = 6;
   const signupEmailInput = signupForm?.querySelector("[name='email']");
   const emailOtpInput = signupForm?.querySelector("[name='otp']");
@@ -1829,6 +1832,16 @@ function bindAuth() {
       }
     }, 1000);
   };
+
+  googleSignupBtn?.addEventListener("click", () => {
+    window.location.assign(`/api/auth/google/start?account_type=${encodeURIComponent(state.authMode || "B2C")}`);
+  });
+
+  referralToggleBtn?.addEventListener("click", () => {
+    const isHidden = referralCodeField?.classList.toggle("hidden");
+    referralToggleBtn.setAttribute("aria-expanded", isHidden ? "false" : "true");
+    if (!isHidden) referralCodeField?.querySelector("input")?.focus();
+  });
 
   sendEmailOtpBtn?.addEventListener("click", async () => {
     if (sendEmailOtpBtn.disabled) return;
@@ -1936,6 +1949,11 @@ function bindAuth() {
 }
 
 function handleHashRoute() {
+  const params = new URLSearchParams(window.location.search || "");
+  if (params.get("google_oauth") === "failed") {
+    toast("Google signup failed. Please try again or use email signup.");
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash || ""}`);
+  }
   const hash = decodeURIComponent(location.hash || "");
   const categoryHashMap = {
     "#microcontrollers": "Microcontroller",

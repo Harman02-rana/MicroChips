@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ settings.store_name or "Microchip Cart" }}</title>
     <meta name="description" content="Microchip Cart is a B2B and B2C ecommerce storefront for verified electronic components, order approvals, invoices, and distributor-ready workflows.">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=microchip-mobile-guest-profile-v1">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=microchip-profile-setup-v1">
     <link rel="stylesheet" href="{{ url_for('static', filename='footer/footer.css') }}?v=footer-mobile-audit-v2">
     <!-- Lucide Icons CDN -->
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -535,8 +535,27 @@
         <button class="text-link-btn auth-inline-link" type="button" data-auth-tab="login">Back to login</button>
       </form>
       <form class="auth-panel" id="signupForm" data-auth-panel="signup">
-        <h2>Create <span data-auth-title>customer</span> account</h2>
-        <p class="form-help" data-auth-help>Customer accounts are for individual purchases and quick reorders.</p>
+        <div class="profile-setup-intro">
+          <div class="profile-setup-icon" aria-hidden="true">
+            <span class="profile-setup-card-line"></span>
+            <span class="profile-setup-avatar"></span>
+            <span class="profile-setup-card-line short"></span>
+          </div>
+          <p class="profile-setup-kicker">We're almost there!</p>
+          <h2>Finish setting up your <span data-auth-title>customer</span> profile</h2>
+          <p class="form-help" data-auth-help>Customer accounts are for individual purchases and quick reorders.</p>
+          <small>Takes only about 15 seconds or less</small>
+        </div>
+        <button class="social-auth-btn" id="googleSignupBtn" type="button" aria-label="Sign up via Google">
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span>Sign up via Google</span>
+        </button>
+        <div class="auth-divider"><span>OR</span></div>
+        <button class="email-signup-heading" type="button" disabled>
+          <i data-lucide="pen-line" aria-hidden="true"></i>
+          <span>Sign up using another email</span>
+          <i data-lucide="chevron-down" aria-hidden="true"></i>
+        </button>
         <input name="account_type" type="hidden" value="B2C">
         <label>Name<input name="name" required></label>
         <label>Email<input name="email" type="email" required></label>
@@ -545,6 +564,13 @@
         <button class="secondary-btn" id="sendEmailOtpBtn" type="button">Send Email OTP</button>
         <label>Email OTP<input name="otp" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter the 6-digit email code" required></label>
         <label>Phone<input name="phone" inputmode="tel"></label>
+        <div class="referral-code-block">
+          <button class="referral-toggle" id="referralToggleBtn" type="button" aria-expanded="false" aria-controls="referralCodeField">
+            <i data-lucide="gift" aria-hidden="true"></i>
+            <span>Have a referral code to apply?</span>
+          </button>
+          <label class="hidden" id="referralCodeField">Referral code<input name="referral_code" autocomplete="off" placeholder="Enter code"></label>
+        </div>
         <div class="business-fields">
           <label>Company name<input name="company_name" autocomplete="organization"></label>
           <label>GSTIN<input name="gstin" maxlength="15" placeholder="15-char e.g., 22AAAAA0000A1Z5"></label>

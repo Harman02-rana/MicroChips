@@ -168,6 +168,8 @@ i[data-lucide="shopping-cart"]::before { content: "\25F1"; }
 i[data-lucide="sun"]::before { content: "\2600"; }
 i[data-lucide="moon"]::before { content: "\263E"; }
 i[data-lucide="user"]::before { content: "\25CE"; }
+i[data-lucide="pen-line"]::before { content: "\270E"; }
+i[data-lucide="gift"]::before { content: "\25A3"; }
 
 .hidden {
   display: none !important;
@@ -1222,6 +1224,171 @@ main {
 .auth-panel.active,
 .checkout-form {
   display: grid;
+}
+
+.profile-setup-intro {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.profile-setup-icon {
+  align-items: center;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(16, 185, 129, 0.12));
+  border: 1px solid rgba(0, 212, 255, 0.3);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 212, 255, 0.12);
+  display: grid;
+  gap: 5px;
+  height: 62px;
+  justify-items: center;
+  justify-self: center;
+  margin-bottom: 2px;
+  padding: 10px;
+  transform: rotate(5deg);
+  width: 48px;
+}
+
+.profile-setup-card-line {
+  background: var(--accent);
+  border-radius: 999px;
+  height: 4px;
+  opacity: 0.85;
+  width: 22px;
+}
+
+.profile-setup-card-line.short {
+  width: 16px;
+}
+
+.profile-setup-avatar {
+  background:
+    radial-gradient(circle at 50% 34%, #ffe0cc 0 18%, transparent 19%),
+    radial-gradient(circle at 50% 74%, #7dd3fc 0 30%, transparent 31%),
+    linear-gradient(135deg, #1e3a8a, #0f172a);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  height: 22px;
+  width: 22px;
+}
+
+.profile-setup-kicker {
+  color: var(--text);
+  font-size: clamp(20px, 4vw, 28px);
+  line-height: 1.1;
+  margin: 0;
+}
+
+.profile-setup-intro h2 {
+  font-size: clamp(22px, 4.5vw, 30px);
+  line-height: 1.18;
+  margin: 0;
+}
+
+.profile-setup-intro small {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.social-auth-btn,
+.email-signup-heading {
+  align-items: center;
+  background: rgba(2, 8, 23, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  color: var(--text);
+  display: grid;
+  font-size: 18px;
+  font-weight: 800;
+  gap: 12px;
+  grid-template-columns: 34px minmax(0, 1fr) 24px;
+  min-height: 58px;
+  padding: 12px 16px;
+  text-align: center;
+  width: 100%;
+}
+
+.social-auth-btn {
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  margin-top: 10px;
+}
+
+.social-auth-btn::after {
+  content: "";
+}
+
+.social-auth-btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.google-mark {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 50%;
+  color: #4285f4;
+  display: inline-flex;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.auth-divider {
+  align-items: center;
+  color: var(--muted);
+  display: grid;
+  font-size: 12px;
+  font-weight: 900;
+  gap: 12px;
+  grid-template-columns: 1fr auto 1fr;
+  letter-spacing: 0;
+  margin: 2px 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.42), transparent);
+  content: "";
+  height: 1px;
+}
+
+.email-signup-heading {
+  cursor: default;
+}
+
+.email-signup-heading:disabled {
+  opacity: 1;
+}
+
+.email-signup-heading i {
+  color: var(--accent);
+}
+
+.referral-code-block {
+  display: grid;
+  gap: 10px;
+}
+
+.referral-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--accent-strong);
+  display: inline-flex;
+  font-weight: 800;
+  gap: 10px;
+  justify-self: start;
+  min-height: 40px;
+  padding: 0;
+}
+
+.referral-toggle:hover {
+  color: var(--text);
+}
+
+.referral-toggle i {
+  color: var(--accent);
 }
 
 label {
