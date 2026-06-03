@@ -2062,18 +2062,44 @@ def api_verify_email_otp():
 def api_forgot_password():
     data = request.get_json(silent=True) or {}
     email = normalize_email(data.get("email"))
-    requested_type = normalize_account_type(data.get("account_type")) if data.get("account_type") else None
     if not email:
         return api_error("Email is required.", 400)
 
     db = DBSession()
     try:
         user = db.query(UserModel).filter_by(email=email).first()
+        if not user and supabase:
+            auth_user = supabase_find_auth_user_by_email(email)
+            auth_id = auth_user_id(auth_user)
+            if auth_user and auth_id:
+                user = db.query(UserModel).filter_by(auth_user_id=auth_id).first()
+                if not user:
+                    account_type = supabase_account_type(auth_user, "B2C")
+                    name = (
+                        supabase_user_metadata(auth_user).get("name")
+                        or auth_user_email(auth_user).split("@", 1)[0]
+                    )
+                    created_at = as_utc(getattr(auth_user, "created_at", None)) or now_utc()
+                    user = UserModel(
+                        id=auth_id,
+                        auth_user_id=auth_id,
+                        email=email,
+                        name=name,
+                        full_name=name,
+                        account_type=account_type,
+                        role="business" if account_type == "B2B" else "customer",
+                        email_verified=bool(getattr(auth_user, "email_confirmed_at", None)),
+                        status="Active",
+                        created_at=created_at,
+                        updated_at=now_utc(),
+                    )
+                    db.add(user)
+                    db.flush()
         if not user:
-            return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
-        if requested_type and normalize_account_type(user.account_type) != requested_type:
+            print(f"Password reset requested for unknown email: {mask_email_for_log(email)}")
             return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
         if (user.status or "Active") not in ("Active", "Pending"):
+            print(f"Password reset skipped for inactive account: {mask_email_for_log(email)}")
             return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
 
         code = f"{secrets.randbelow(10 ** PASSWORD_RESET_LENGTH):0{PASSWORD_RESET_LENGTH}d}"
