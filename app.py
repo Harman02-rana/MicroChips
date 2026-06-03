@@ -1914,8 +1914,6 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     auth_id = auth_user_id(auth_user)
 
     existing = db.query(UserModel).filter_by(email=email).first()
-    if existing and existing.email_verified and existing.password_hash:
-        return None, "This email already has an account."
     if phone:
         phone_user = db.query(UserModel).filter(UserModel.phone == phone).first()
         if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
@@ -1931,18 +1929,27 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     elif auth_id:
         user.auth_user_id = auth_id
 
+    existing_verified = bool(existing and existing.email_verified)
+    if existing_verified:
+        account_type = normalize_account_type(existing.account_type)
+        role = existing.role or ("business" if account_type == "B2B" else "customer")
+
     user.name = full_name
     user.full_name = full_name
     user.phone = phone
     user.password_hash = generate_password_hash(data["password"])
     user.account_type = account_type
     user.role = role
-    user.company_name = data.get("company_name") if account_type == "B2B" else None
-    user.gstin = data.get("gstin") if account_type == "B2B" else None
+    if account_type == "B2B":
+        user.company_name = data.get("company_name") or user.company_name
+        user.gstin = data.get("gstin") or user.gstin
+    elif not existing_verified:
+        user.company_name = None
+        user.gstin = None
     user.is_admin = False
     user.email_verified = True
     user.phone_verified = False
-    user.status = "Pending" if account_type == "B2B" else "Active"
+    user.status = user.status or ("Pending" if account_type == "B2B" else "Active")
     user.updated_at = now_utc()
     db.flush()
 
@@ -1973,8 +1980,7 @@ def api_send_email_otp():
     try:
         existing = db.query(UserModel).filter_by(email=email).first()
         if existing and existing.email_verified:
-            print("SEND EMAIL OTP ERROR: email already has a verified account.")
-            return api_error("This email already has an account.", 400)
+            print("SEND EMAIL OTP: existing verified account; OTP can confirm ownership and refresh password.")
     finally:
         db.close()
 
@@ -2245,8 +2251,6 @@ def api_signup_compat():
     db = DBSession()
     try:
         existing = db.query(UserModel).filter_by(email=data["email"]).first()
-        if existing and existing.email_verified:
-            return api_error("This email already has an account.", 400)
         if data["phone"]:
             phone_user = db.query(UserModel).filter_by(phone=data["phone"]).first()
             if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
