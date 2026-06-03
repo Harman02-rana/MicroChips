@@ -102,6 +102,7 @@ const els = {
   profileWishlistBtn: document.querySelector("#profileWishlistBtn"),
   profileSettingsBtn: document.querySelector("#profileSettingsBtn"),
   profileThemeBtn: document.querySelector("#profileThemeBtn"),
+  profileBusinessPanelBtn: document.querySelector("#profileBusinessPanelBtn"),
   profileLogoutBtn: document.querySelector("#profileLogoutBtn"),
   settingsList: document.querySelector("#settingsList"),
   profileSettingsForm: document.querySelector("#profileSettingsForm"),
@@ -1342,19 +1343,27 @@ function updateAuthUi() {
   
   if (loggedIn) {
     const name = state.currentUser.name || "User";
+    const isBusinessUser = (state.currentUser.account_type || "B2C") === "B2B";
     if (document.querySelector("#profileNameLabel")) {
       document.querySelector("#profileNameLabel").textContent = name;
     }
+    els.profileBusinessPanelBtn?.classList.toggle("hidden", !isBusinessUser);
     if (sidebarLabel) sidebarLabel.textContent = `Hello, ${name}`;
     if (sidebarActions) {
       sidebarActions.innerHTML = `
         <button type="button" class="sidebar-link" id="sidebarAccountBtn">Your Account</button>
+        ${isBusinessUser ? `<button type="button" class="sidebar-link" id="sidebarBusinessPanelBtn">Business Panel</button>` : ""}
         <button type="button" class="sidebar-link" id="sidebarLogoutBtn" style="color:var(--danger);">Logout</button>
       `;
       document.querySelector("#sidebarAccountBtn")?.addEventListener("click", () => {
         document.querySelector("#mobileSidebar")?.classList.remove("open");
         document.querySelector("#sidebarBackdrop")?.classList.remove("show");
         showSettings();
+      });
+      document.querySelector("#sidebarBusinessPanelBtn")?.addEventListener("click", () => {
+        document.querySelector("#mobileSidebar")?.classList.remove("open");
+        document.querySelector("#sidebarBackdrop")?.classList.remove("show");
+        window.location.assign("/admin");
       });
       document.querySelector("#sidebarLogoutBtn")?.addEventListener("click", async () => {
         // Toggle mobile sidebar close
@@ -1407,6 +1416,7 @@ function updateAuthUi() {
     if (els.profileEmail) els.profileEmail.textContent = "Signed out";
     if (els.profileDropdownInitial) els.profileDropdownInitial.textContent = "U";
     if (els.profileRoleBadge) els.profileRoleBadge.textContent = "Guest";
+    els.profileBusinessPanelBtn?.classList.add("hidden");
     return;
   }
   const name = state.currentUser.name || "User";
@@ -2600,6 +2610,10 @@ function bindEvents() {
     setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
     closeProfileMenu();
     toast("Theme updated");
+  });
+  els.profileBusinessPanelBtn?.addEventListener("click", () => {
+    closeProfileMenu();
+    window.location.assign("/admin");
   });
   els.profileLogoutBtn?.addEventListener("click", async () => {
     closeProfileMenu();
