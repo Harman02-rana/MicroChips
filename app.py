@@ -2303,22 +2303,23 @@ def api_login_direct():
     db = DBSession()
     try:
         local_user = db.query(UserModel).filter_by(email=email).first()
+        local_password_failed = False
         if local_user and local_user.password_hash:
-            if not check_password_hash(local_user.password_hash, password):
+            if check_password_hash(local_user.password_hash, password):
+                if not local_user.email_verified and not getattr(local_user, "is_admin", False):
+                    return api_error("Please verify your email before logging in.", 403)
+                if (local_user.status or "Active") not in ("Active", "Pending"):
+                    return api_error("This account is not active. Please contact support.", 403)
+                local_user.last_login = now_utc()
+                db.commit()
+                db.refresh(local_user)
+                session_login_for(local_user)
+                return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
+            if not supabase:
                 return api_error("Invalid email or password.", 401)
-            if requested_type and normalize_account_type(requested_type) != normalize_account_type(local_user.account_type):
-                return api_error("Please choose the correct account type for this email.", 403)
-            if not local_user.email_verified and not getattr(local_user, "is_admin", False):
-                return api_error("Please verify your email before logging in.", 403)
-            if (local_user.status or "Active") not in ("Active", "Pending"):
-                return api_error("This account is not active. Please contact support.", 403)
-            local_user.last_login = now_utc()
-            db.commit()
-            db.refresh(local_user)
-            session_login_for(local_user)
-            return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
+            local_password_failed = True
 
-        should_try_supabase_auth = bool(supabase and local_user and not local_user.password_hash)
+        should_try_supabase_auth = bool(supabase and (not local_user or not local_user.password_hash or local_password_failed))
         if not supabase or (not SUPABASE_AUTH_LOGIN_FALLBACK and not should_try_supabase_auth):
             user = local_user
             if not user and can_auto_create_test_account():
@@ -2326,8 +2327,6 @@ def api_login_direct():
                 user = create_local_test_user(db, email, password, requested_type)
             if not user or not user.password_hash or not check_password_hash(user.password_hash, password):
                 return api_error("Invalid email or password.", 401)
-            if requested_type and normalize_account_type(requested_type) != normalize_account_type(user.account_type):
-                return api_error("Please choose the correct account type for this email.", 403)
             if not user.email_verified and not getattr(user, "is_admin", False):
                 return api_error("Please verify your email before logging in.", 403)
             if (user.status or "Active") not in ("Active", "Pending"):
@@ -2363,7 +2362,7 @@ def api_login_direct():
                 db.flush()
 
         email_verified = bool(getattr(auth_user, "email_confirmed_at", None))
-        account_type = supabase_account_type(auth_user, requested_type or "B2C")
+        account_type = supabase_account_type(auth_user, getattr(local_user, "account_type", None) or requested_type or "B2C")
         role = "business" if account_type == "B2B" else "customer"
 
         if not user:
@@ -2386,10 +2385,12 @@ def api_login_direct():
             db.flush()
         else:
             user.auth_user_id = auth_user.id
-            user.email_verified = email_verified
+            user.email_verified = bool(user.email_verified or email_verified)
             if not user.role:
                 user.role = role
-            if not user.password_hash:
+            if not user.account_type:
+                user.account_type = account_type
+            if not user.password_hash or local_password_failed:
                 user.password_hash = generate_password_hash(password)
 
         if not user.email_verified and not getattr(user, "is_admin", False):
