@@ -2053,10 +2053,7 @@ def api_verify_email_otp():
                     "user": public_user(existing_user),
                 })
             db.rollback()
-            return api_ok({
-                "message": "Account created. Please login.",
-                "profile_warning": user_error,
-            }, 201)
+            return api_error(user_error, 400)
         db.commit()
         db.refresh(user)
         message = (
@@ -2071,18 +2068,10 @@ def api_verify_email_otp():
         if isinstance(exc, IntegrityError):
             error_text = str(getattr(exc, "orig", exc)).lower()
             if "phone" in error_text:
-                return api_ok({
-                    "message": "Account created. Please login.",
-                    "profile_warning": "This phone number is already registered.",
-                }, 201)
+                return api_error("This phone number is already registered.", 400)
             if "email" in error_text:
-                return api_ok({
-                    "message": "Email already verified. Please login.",
-                })
-        return api_ok({
-            "message": "Account created. Please login.",
-            "profile_warning": str(exc),
-        }, 201)
+                return api_error("This email already has an account.", 400)
+        return api_error("Account could not be created. Please try again.", 500)
     finally:
         db.close()
 
