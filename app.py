@@ -58,6 +58,7 @@ os.environ.pop("HTTP_PROXY", None)
 os.environ.pop("HTTPS_PROXY", None)
 
 supabase = None
+supabase_admin = None
 def supabase_client_options():
     if not ClientOptions:
         return None
@@ -564,14 +565,27 @@ def supabase_auth_signup(email, password):
         print(f"Supabase signup failed: {exc}")
         return None, exc
 
+def env_flag(name, default=False):
+    raw = clean_env(os.getenv(name))
+    if not raw:
+        return default
+    return raw.lower() in {"1", "true", "yes", "on"}
+
+SUPABASE_AUTH_LOGIN_FALLBACK = env_flag("SUPABASE_AUTH_LOGIN_FALLBACK", False)
+SUPABASE_AUTH_SYNC_ON_SIGNUP = env_flag("SUPABASE_AUTH_SYNC_ON_SIGNUP", False)
+
 def supabase_admin_client():
+    global supabase_admin
+    if supabase_admin:
+        return supabase_admin
     if not create_client:
         return None
     service_role_key = clean_env(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
     if supabase_url in SUPABASE_PLACEHOLDERS or service_role_key in SUPABASE_PLACEHOLDERS:
         return None
     try:
-        return create_client(supabase_url, service_role_key, options=supabase_client_options())
+        supabase_admin = create_client(supabase_url, service_role_key, options=supabase_client_options())
+        return supabase_admin
     except Exception as exc:
         print(f"Supabase admin client unavailable: {exc}")
         return None
@@ -2010,15 +2024,15 @@ def api_verify_email_otp():
         "role": "business" if data["account_type"] == "B2B" else "customer",
     }
     auth_user = None
-    store_password = False
-    if supabase:
+    store_password = True
+    if supabase and SUPABASE_AUTH_SYNC_ON_SIGNUP:
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
             print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
             return api_error("Email verified, but auth setup failed. Please try again.", 400)
+        store_password = False
     else:
-        print("SUPABASE AUTH NOT CONFIGURED: creating local password user after OTP verification.")
-        store_password = True
+        print("Creating local password user after OTP verification.")
 
     db = DBSession()
     try:
@@ -2300,7 +2314,7 @@ def api_login_direct():
             session_login_for(local_user)
             return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
 
-        if not supabase:
+        if not supabase or not SUPABASE_AUTH_LOGIN_FALLBACK:
             user = local_user
             if not user and can_auto_create_test_account():
                 print(f"LOCAL TEST AUTH: auto-creating fallback account for {mask_email_for_log(email)}")
