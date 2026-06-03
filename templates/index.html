@@ -518,7 +518,7 @@
         <p class="form-help" data-auth-help>Use your customer account to track orders and checkout faster.</p>
         <input name="account_type" type="hidden" value="B2C">
         <label>Email<input name="email" type="email" required></label>
-        <label>Password<input name="password" type="password" required></label>
+        <label>Password<span class="password-field"><input name="password" type="password" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
         <button class="text-link-btn auth-inline-link" id="forgotPasswordBtn" type="button">Forgot password?</button>
         <button class="primary-btn" type="submit">Login</button>
       </form>
@@ -529,8 +529,8 @@
         <label>Email<input name="email" type="email" required></label>
         <button class="secondary-btn" id="sendPasswordResetBtn" type="button">Send reset code</button>
         <label>Reset code<input name="code" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="Enter the 6-digit code" required></label>
-        <label>New password<input name="new_password" type="password" minlength="6" required></label>
-        <label>Confirm new password<input name="confirm_password" type="password" minlength="6" required></label>
+        <label>New password<span class="password-field"><input name="new_password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
+        <label>Confirm new password<span class="password-field"><input name="confirm_password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
         <button class="primary-btn" type="submit">Reset password</button>
         <button class="text-link-btn auth-inline-link" type="button" data-auth-tab="login">Back to login</button>
       </form>
@@ -550,7 +550,7 @@
           <label>GSTIN<input name="gstin" maxlength="15" placeholder="15-char e.g., 22AAAAA0000A1Z5"></label>
           <label>Business address<input name="business_address" placeholder="Registered business address"></label>
         </div>
-        <label>Password<input name="password" type="password" minlength="6" required></label>
+        <label>Password<span class="password-field"><input name="password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
         <button class="primary-btn" type="submit">Verify OTP / Create Account</button>
       </form>
     </dialog>
@@ -709,9 +709,9 @@
         </form>
 
         <form class="settings-panel" id="passwordSettingsForm" data-settings-panel="password">
-          <label>Current password<input name="current_password" type="password" required></label>
-          <label>New password<input name="new_password" type="password" minlength="6" required></label>
-          <label>Confirm new password<input name="confirm_password" type="password" minlength="6" required></label>
+          <label>Current password<span class="password-field"><input name="current_password" type="password" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
+          <label>New password<span class="password-field"><input name="new_password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
+          <label>Confirm new password<span class="password-field"><input name="confirm_password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
           <button class="primary-btn" type="submit">Change password</button>
         </form>
 
@@ -747,7 +747,7 @@
           <form id="deleteAccountForm">
             <h3>Delete account</h3>
             <p class="form-help">This permanently removes your login account from this store. Existing orders may remain for invoices, support, and compliance records.</p>
-            <label>Password<input name="password" type="password" required></label>
+            <label>Password<span class="password-field"><input name="password" type="password" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
             <label>Type DELETE<input name="confirm" required></label>
             <button class="danger-btn" type="submit">Delete account</button>
           </form>

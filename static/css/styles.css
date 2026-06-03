@@ -1232,6 +1232,39 @@ label {
   gap: 7px;
 }
 
+.password-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  position: relative;
+}
+
+.password-field input {
+  border-bottom-right-radius: 0;
+  border-top-right-radius: 0;
+  min-width: 0;
+}
+
+.password-toggle {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 16px 16px 0;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 17px;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
 .two-col {
   display: grid;
   gap: 12px;

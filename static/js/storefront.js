@@ -1687,6 +1687,17 @@ function bindAuth() {
     button.addEventListener("click", () => showAuth(button.dataset.authTab));
   });
 
+  document.querySelectorAll("[data-password-toggle]").forEach(button => {
+    button.addEventListener("click", () => {
+      const input = button.closest(".password-field")?.querySelector("input");
+      if (!input) return;
+      const show = input.type === "password";
+      input.type = show ? "text" : "password";
+      button.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      button.classList.toggle("active", show);
+    });
+  });
+
   document.querySelector("#forgotPasswordBtn")?.addEventListener("click", () => {
     const loginEmail = document.querySelector("#loginForm [name='email']")?.value || "";
     const resetEmail = document.querySelector("#resetPasswordForm [name='email']");
@@ -1805,16 +1816,16 @@ function bindAuth() {
     const defaultLabel = "Send Email OTP";
     let remaining = Math.max(1, Number(seconds) || 60);
     sendEmailOtpBtn.disabled = true;
-    sendEmailOtpBtn.textContent = `Resend in ${remaining}s`;
+    sendEmailOtpBtn.textContent = "OTP sent";
     emailOtpCooldownTimer = setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
         clearInterval(emailOtpCooldownTimer);
+        emailOtpCooldownTimer = null;
         sendEmailOtpBtn.disabled = false;
         sendEmailOtpBtn.textContent = defaultLabel;
         return;
       }
-      sendEmailOtpBtn.textContent = `Resend in ${remaining}s`;
     }, 1000);
   };
 
