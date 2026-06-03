@@ -1806,6 +1806,7 @@ function bindAuth() {
   const signupForm = document.querySelector("#signupForm");
   const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
   const emailOtpLength = 6;
+  const signupEmailInput = signupForm?.querySelector("[name='email']");
   const emailOtpInput = signupForm?.querySelector("[name='otp']");
   const otpEmailInput = signupForm?.querySelector("[name='otp_email']");
   const otpTokenInput = signupForm?.querySelector("[name='otp_token']");
@@ -1831,7 +1832,7 @@ function bindAuth() {
 
   sendEmailOtpBtn?.addEventListener("click", async () => {
     if (sendEmailOtpBtn.disabled) return;
-    const email = String(signupForm?.querySelector("[name='email']")?.value || "").trim();
+    const email = String(signupEmailInput?.value || "").trim();
     if (!email) {
       toast("Email is required.");
       return;
@@ -1873,6 +1874,15 @@ function bindAuth() {
     }
   });
 
+  signupEmailInput?.addEventListener("input", () => {
+    const email = String(signupEmailInput.value || "").trim();
+    if (!otpEmailInput?.value || otpEmailInput.value === email) return;
+    if (emailOtpInput) emailOtpInput.value = "";
+    if (otpTokenInput) otpTokenInput.value = "";
+    otpEmailInput.value = "";
+    localStorage.removeItem("mc_email_otp");
+  });
+
   document.querySelector("#signupForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1889,11 +1899,13 @@ function bindAuth() {
       if (body.account_type === "B2B" && !hasBusinessDetails) {
         body.account_type = "B2C";
       }
-      if (body.otp_email) {
-        body.email = String(body.otp_email || "").trim();
-      } else {
-        body.email = String(body.email || "").trim();
+      const visibleEmail = String(body.email || "").trim();
+      const otpEmail = String(body.otp_email || "").trim();
+      if (otpEmail && otpEmail !== visibleEmail) {
+        toast("Please request a new OTP for this email.");
+        return;
       }
+      body.email = visibleEmail;
       body.otp_token = String(body.otp_token || "");
       if (!body.otp_token) {
         try {
