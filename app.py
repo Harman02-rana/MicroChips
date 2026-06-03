@@ -2031,7 +2031,8 @@ def api_verify_email_otp():
     }
     auth_user = None
     store_password = True
-    if supabase and SUPABASE_AUTH_SYNC_ON_SIGNUP:
+    requires_auth_user = bool(supabase and engine.dialect.name == "postgresql")
+    if supabase and (SUPABASE_AUTH_SYNC_ON_SIGNUP or requires_auth_user):
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
             print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
