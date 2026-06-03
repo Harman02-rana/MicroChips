@@ -1596,7 +1596,7 @@ function setAuthMode(mode = "B2C") {
       ? "Business accounts are for companies, distributors, GST invoices, and order approvals."
       : "Customer accounts are for individual purchases, order tracking, and quick reorders.";
   });
-  document.querySelectorAll("#loginForm [name='account_type'], #signupForm [name='account_type']").forEach(input => {
+  document.querySelectorAll("#loginForm [name='account_type'], #resetPasswordForm [name='account_type'], #signupForm [name='account_type']").forEach(input => {
     input.value = state.authMode;
   });
   const signupPhone = document.querySelector("#signupForm [name='phone']");
@@ -1677,6 +1677,13 @@ function bindAuth() {
     button.addEventListener("click", () => showAuth(button.dataset.authTab));
   });
 
+  document.querySelector("#forgotPasswordBtn")?.addEventListener("click", () => {
+    const loginEmail = document.querySelector("#loginForm [name='email']")?.value || "";
+    const resetEmail = document.querySelector("#resetPasswordForm [name='email']");
+    if (resetEmail && loginEmail) resetEmail.value = loginEmail;
+    showAuth("reset", state.authMode);
+  });
+
   document.querySelector("#loginForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1703,6 +1710,67 @@ function bindAuth() {
         await checkout();
         return;
       }
+      const redirectUrl = data.redirect_url || authDestination();
+      if (redirectUrl && redirectUrl !== "/" && redirectUrl !== window.location.pathname) {
+        window.location.assign(redirectUrl);
+      }
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      setFormBusy(form, false);
+    }
+  });
+
+  const resetPasswordForm = document.querySelector("#resetPasswordForm");
+  const sendPasswordResetBtn = document.querySelector("#sendPasswordResetBtn");
+  sendPasswordResetBtn?.addEventListener("click", async () => {
+    if (!resetPasswordForm || sendPasswordResetBtn.disabled) return;
+    const email = String(resetPasswordForm.querySelector("[name='email']")?.value || "").trim();
+    if (!email) {
+      toast("Email is required.");
+      return;
+    }
+    const defaultLabel = sendPasswordResetBtn.textContent;
+    sendPasswordResetBtn.disabled = true;
+    sendPasswordResetBtn.textContent = "Sending...";
+    try {
+      const data = await api("/api/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email, account_type: state.authMode })
+      });
+      if (data.password_reset_fallback && data.reset_code) {
+        const codeInput = resetPasswordForm.querySelector("[name='code']");
+        if (codeInput) codeInput.value = data.reset_code;
+      }
+      toast(data.message || "If an account exists for that email, a reset code has been sent.");
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      sendPasswordResetBtn.disabled = false;
+      sendPasswordResetBtn.textContent = defaultLabel;
+    }
+  });
+
+  resetPasswordForm?.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Resetting...");
+    try {
+      const body = Object.fromEntries(new FormData(form).entries());
+      body.account_type = state.authMode;
+      const data = await api("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      state.currentUser = data.user || null;
+      if (data.auth_token) {
+        state.authToken = data.auth_token;
+        localStorage.setItem("mc_auth_token", data.auth_token);
+      }
+      els.authModal.close();
+      updateAuthUi();
+      toast(data.message || "Password reset.");
       const redirectUrl = data.redirect_url || authDestination();
       if (redirectUrl && redirectUrl !== "/" && redirectUrl !== window.location.pathname) {
         window.location.assign(redirectUrl);

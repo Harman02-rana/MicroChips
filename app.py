@@ -217,6 +217,8 @@ class UserModel(Base):
     phone_verified = Column(Boolean, default=False)
     status         = Column(String(30), default="Active")
     last_login     = Column(DateTime(timezone=True), nullable=True)
+    reset_password_hash       = Column(Text, nullable=True)
+    reset_password_expires_at = Column(DateTime(timezone=True), nullable=True)
     created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -343,6 +345,8 @@ def ensure_compatible_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT false",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'Active'",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_expires_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(30) DEFAULT 'customer'",
@@ -390,6 +394,8 @@ def ensure_sqlite_schema():
         "ALTER TABLE users ADD COLUMN gstin VARCHAR(30)",
         "ALTER TABLE users ADD COLUMN role VARCHAR(30) DEFAULT 'customer'",
         "ALTER TABLE users ADD COLUMN full_name VARCHAR(255)",
+        "ALTER TABLE users ADD COLUMN reset_password_hash TEXT",
+        "ALTER TABLE users ADD COLUMN reset_password_expires_at DATETIME",
     ]
     with engine.begin() as connection:
         for statement in ddl_statements:
@@ -417,6 +423,8 @@ def ensure_sqlite_schema():
                     phone_verified BOOLEAN DEFAULT 0,
                     status VARCHAR(30) DEFAULT 'Active',
                     last_login DATETIME,
+                    reset_password_hash TEXT,
+                    reset_password_expires_at DATETIME,
                     created_at DATETIME,
                     updated_at DATETIME
                 )
@@ -426,6 +434,7 @@ def ensure_sqlite_schema():
                 "id", "email", "phone", "password_hash", "name", "full_name",
                 "account_type", "role", "company_name", "gstin", "is_admin",
                 "email_verified", "phone_verified", "status", "last_login",
+                "reset_password_hash", "reset_password_expires_at",
                 "created_at", "updated_at",
             ]
             copy_columns = [column for column in target_columns if column in old_column_names]
@@ -498,6 +507,16 @@ SMTP_PLACEHOLDERS        = {
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+def as_utc(value):
+    if not value:
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except Exception:
+            return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 def now_iso():
     return now_utc().isoformat()
@@ -1659,11 +1678,18 @@ EMAIL_OTP_COOLDOWN_SECONDS = 60
 EMAIL_OTP_LENGTH = 6
 EMAIL_OTP_TTL_SECONDS = 10 * 60
 INVALID_EMAIL_OTP_MESSAGE = "Invalid or expired OTP. Please request a new code."
+PASSWORD_RESET_TTL_SECONDS = 15 * 60
+PASSWORD_RESET_LENGTH = 6
+PASSWORD_RESET_GENERIC_MESSAGE = "If an account exists for that email, a reset code has been sent."
 
 def email_otp_digest(email, otp):
     secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
     message = f"{normalize_email(email)}:{str(otp or '').strip()}".encode("utf-8")
     return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+def password_reset_digest(email, code):
+    message = f"password-reset:{normalize_email(email)}:{str(code or '').strip()}".encode("utf-8")
+    return hmac.new(auth_token_secret(), message, hashlib.sha256).hexdigest()
 
 def email_otp_token_signature(email, digest, expires_at):
     secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
@@ -1732,6 +1758,28 @@ def local_email_verification_fallback(email):
         "otp": otp,
         "otp_token": make_email_otp_token(email, otp, expires_at),
         "message": "Email OTP is unavailable on this deployment. Continue with the pre-filled verification code.",
+    }
+
+def send_password_reset_email(email, code):
+    text_body = (
+        f"Your MicroChip Cart password reset code is {code}.\n\n"
+        "This code expires in 15 minutes. If you did not request it, you can ignore this email."
+    )
+    html_body = (
+        "<p>Your MicroChip Cart password reset code is:</p>"
+        f"<h2 style=\"letter-spacing:4px;\">{code}</h2>"
+        "<p>This code expires in 15 minutes. If you did not request it, you can ignore this email.</p>"
+    )
+    return send_email(email, "Reset your MicroChip Cart password", text_body, html_body)
+
+def local_password_reset_fallback(email, code):
+    smtp_ok, _ = smtp_config_status()
+    if supabase or smtp_ok:
+        return None
+    return {
+        "reset_code": code,
+        "password_reset_fallback": True,
+        "message": "Password reset email is unavailable on this deployment. Continue with the pre-filled reset code.",
     }
 
 def can_auto_create_test_account():
@@ -2007,6 +2055,110 @@ def api_verify_email_otp():
             "message": "Account created. Please login.",
             "profile_warning": str(exc),
         }, 201)
+    finally:
+        db.close()
+
+@app.post("/api/auth/forgot-password")
+def api_forgot_password():
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    requested_type = normalize_account_type(data.get("account_type")) if data.get("account_type") else None
+    if not email:
+        return api_error("Email is required.", 400)
+
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(email=email).first()
+        if not user:
+            return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
+        if requested_type and normalize_account_type(user.account_type) != requested_type:
+            return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
+        if (user.status or "Active") not in ("Active", "Pending"):
+            return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
+
+        code = f"{secrets.randbelow(10 ** PASSWORD_RESET_LENGTH):0{PASSWORD_RESET_LENGTH}d}"
+        user.reset_password_hash = password_reset_digest(email, code)
+        user.reset_password_expires_at = now_utc() + timedelta(seconds=PASSWORD_RESET_TTL_SECONDS)
+        user.updated_at = now_utc()
+        db.commit()
+
+        if send_password_reset_email(email, code):
+            return api_ok({"message": PASSWORD_RESET_GENERIC_MESSAGE})
+
+        fallback = local_password_reset_fallback(email, code)
+        if fallback:
+            return api_ok(fallback)
+
+        user.reset_password_hash = None
+        user.reset_password_expires_at = None
+        user.updated_at = now_utc()
+        db.commit()
+        return api_error("Could not send reset email. Please check SMTP settings.", 400)
+    except Exception as exc:
+        db.rollback()
+        print(f"Password reset request failed: {exc}")
+        return api_error("Could not start password reset. Please try again.", 500)
+    finally:
+        db.close()
+
+
+@app.post("/api/auth/reset-password")
+def api_reset_password():
+    data = request.get_json(silent=True) or {}
+    email = normalize_email(data.get("email"))
+    code = str(data.get("code") or "").strip()
+    new_password = data.get("new_password") or ""
+    confirm_password = data.get("confirm_password") or ""
+
+    if not email or not code:
+        return api_error("Email and reset code are required.", 400)
+    if len(new_password) < 6:
+        return api_error("Password must be at least 6 characters.")
+    if new_password != confirm_password:
+        return api_error("New passwords do not match.")
+
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(email=email).first()
+        if not user or not user.reset_password_hash or not user.reset_password_expires_at:
+            return api_error("Invalid or expired reset code.", 400)
+        expires_at = as_utc(user.reset_password_expires_at)
+        if not expires_at or now_utc() > expires_at:
+            user.reset_password_hash = None
+            user.reset_password_expires_at = None
+            user.updated_at = now_utc()
+            db.commit()
+            return api_error("Invalid or expired reset code.", 400)
+        if not hmac.compare_digest(user.reset_password_hash, password_reset_digest(email, code)):
+            return api_error("Invalid or expired reset code.", 400)
+
+        if supabase:
+            auth_user = supabase_find_auth_user_by_id(getattr(user, "auth_user_id", None))
+            if not auth_user:
+                auth_user = supabase_find_auth_user_by_email(email)
+            if auth_user:
+                ok, admin_error = supabase_set_user_password(auth_user_id(auth_user), new_password, supabase_user_metadata(auth_user))
+                if not ok:
+                    return api_error(f"Failed to reset password: {admin_error}", 400)
+                if not user.auth_user_id:
+                    user.auth_user_id = auth_user_id(auth_user)
+
+        user.password_hash = generate_password_hash(new_password)
+        user.reset_password_hash = None
+        user.reset_password_expires_at = None
+        user.updated_at = now_utc()
+        db.commit()
+        session_login_for(user)
+        return api_ok({
+            "message": "Password reset. You are now logged in.",
+            "user": public_user(user),
+            "auth_token": make_auth_token(user),
+            "redirect_url": auth_redirect_url(user),
+        })
+    except Exception as exc:
+        db.rollback()
+        print(f"Password reset failed: {exc}")
+        return api_error("Could not reset password. Please try again.", 500)
     finally:
         db.close()
 

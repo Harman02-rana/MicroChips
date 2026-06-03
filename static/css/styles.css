@@ -2381,6 +2381,11 @@ body[data-page="products"] .community-reviews {
   text-decoration: underline;
 }
 
+.auth-inline-link {
+  align-self: flex-start;
+  margin-top: -4px;
+}
+
 /* Discussion Board Feed list */
 .community-posts-list {
   display: flex;
