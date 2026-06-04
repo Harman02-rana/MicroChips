@@ -1353,7 +1353,7 @@ function bindCommunityForum() {
 
 async function loadMe() {
   try {
-    const data = await api("/api/auth/me");
+    const data = await api("/api/auth/me", { timeoutMs: 45000 });
     state.currentUser = data.user || null;
     if (data.auth_token) {
       state.authToken = data.auth_token;
@@ -1368,7 +1368,11 @@ async function loadMe() {
       state.authToken = "";
       localStorage.removeItem("mc_auth_token");
     }
-    console.warn("Could not load current user", error);
+    console.warn("Could not load current user", {
+      message: error.message,
+      status: error.status,
+      data: error.data
+    });
   }
   updateAuthUi();
   checkProfileSetup();
@@ -3050,7 +3054,8 @@ async function init() {
   renderCart();
   renderWishlistCount();
   try {
-    await Promise.all([loadProducts(), loadMe()]);
+    await loadProducts();
+    await loadMe();
   } catch (error) {
     toast(error.message);
   }

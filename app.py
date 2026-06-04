@@ -2172,9 +2172,7 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
 
     existing_verified = bool(existing and existing.email_verified)
     if existing_verified:
-        if account_type != "B2B":
-            account_type = normalize_account_type(existing.account_type)
-        role = "business" if account_type == "B2B" else (existing.role or "customer")
+        return None, "This email already has an account. Please login."
 
     if account_type == "B2B" and getattr(existing, "account_type", None) != "B2B":
         user.status = "Pending"
@@ -2195,6 +2193,7 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     user.email_verified = True
     user.phone_verified = False
     user.status = user.status or ("Pending" if account_type == "B2B" else "Active")
+    user.profile_completed = True
     user.updated_at = now_utc()
     db.flush()
 
@@ -2272,7 +2271,7 @@ def api_send_email_otp():
                 "otp_token": fallback["otp_token"],
                 "otp": fallback["otp"],
                 "verification_fallback": True,
-                "cooldown_seconds": 10,
+                "cooldown_seconds": EMAIL_OTP_COOLDOWN_SECONDS,
             })
         print("APP EMAIL OTP SEND ERROR: SMTP send failed.")
         return api_error("Could not send email OTP. Please check SMTP settings.", 400)
@@ -2324,13 +2323,9 @@ def api_verify_email_otp():
         user, user_error = create_or_update_verified_user(db, auth_user, data, store_password=store_password)
         if user_error:
             print(f"LOCAL USER SETUP AFTER OTP FAILED: {user_error}")
-            if user_error == "This email already has an account.":
-                existing_user = db.query(UserModel).filter_by(email=data["email"]).first()
+            if user_error.startswith("This email already has an account"):
                 db.rollback()
-                return api_ok({
-                    "message": "Email already verified. Please login.",
-                    "user": public_user(existing_user),
-                })
+                return signup_error(user_error)
             db.rollback()
             return signup_error(user_error)
         user_payload = signup_user_response(
@@ -2557,7 +2552,7 @@ def api_signup_compat():
                 "otp_token": fallback["otp_token"],
                 "otp": fallback["otp"],
                 "verification_fallback": True,
-                "cooldown_seconds": 10,
+                "cooldown_seconds": EMAIL_OTP_COOLDOWN_SECONDS,
                 "user": None,
                 "redirect_url": None,
             })
@@ -2752,17 +2747,6 @@ def check_and_auto_complete_profile(user, db):
 @app.get("/api/auth/me")
 def api_me():
     user = current_user()
-    if user:
-        db = DBSession()
-        try:
-            row = db.query(UserModel).filter_by(id=user.id).first()
-            if not row:
-                row = db.query(UserModel).filter_by(auth_user_id=user.id).first()
-            if row:
-                check_and_auto_complete_profile(row, db)
-                user = row
-        finally:
-            db.close()
     return api_ok({"user": public_user(user), "auth_token": make_auth_token(user) if user else ""})
 
 @app.post("/api/auth/complete-profile")
