@@ -1319,6 +1319,7 @@ async function loadMe() {
     console.warn("Could not load current user", error);
   }
   updateAuthUi();
+  checkProfileSetup();
 }
 
 async function confirmSignedIn() {
@@ -1426,6 +1427,142 @@ function updateAuthUi() {
   if (els.profileName) els.profileName.textContent = name;
   if (els.profileEmail) els.profileEmail.textContent = state.currentUser.email || "Signed in";
   if (els.profileRoleBadge) els.profileRoleBadge.textContent = role;
+}
+
+function checkProfileSetup() {
+  const modal = document.querySelector("#profileSetupModal");
+  if (!modal) return;
+
+  if (state.currentUser && !state.currentUser.profile_completed && !state.currentUser.is_admin) {
+    const emailEl = document.querySelector("#profileSetupUserEmail");
+    if (emailEl) emailEl.textContent = state.currentUser.email || "";
+
+    const nameInput = document.querySelector("#profileSetupNameInput");
+    if (nameInput && !nameInput.value) {
+      nameInput.value = state.currentUser.name || state.currentUser.full_name || "";
+    }
+
+    const phoneInput = document.querySelector("#profileSetupPhoneInput");
+    if (phoneInput && !phoneInput.value) {
+      phoneInput.value = state.currentUser.phone || "";
+    }
+
+    const authMethodEl = document.querySelector("#profileSetupAuthMethod");
+    const authIconEl = document.querySelector("#profileSetupAuthIcon");
+    const isGoogle = state.currentUser.auth_provider === "google";
+    if (authMethodEl) authMethodEl.textContent = isGoogle ? "Google OAuth" : "Email";
+    if (authIconEl) authIconEl.textContent = isGoogle ? "🌐" : "📧";
+
+    const type = state.currentUser.account_type || "B2C";
+    setProfileSetupMode(type);
+
+    if (!modal.open) {
+      modal.showModal();
+    }
+  } else {
+    if (modal.open) {
+      modal.close();
+    }
+  }
+}
+
+function setProfileSetupMode(mode) {
+  const accountTypeInput = document.querySelector("#profileSetupAccountType");
+  if (accountTypeInput) accountTypeInput.value = mode;
+
+  const tabB2C = document.querySelector("#profileSetupTabB2C");
+  const tabB2B = document.querySelector("#profileSetupTabB2B");
+  if (tabB2C) tabB2C.classList.toggle("active", mode === "B2C");
+  if (tabB2B) tabB2B.classList.toggle("active", mode === "B2B");
+
+  const businessFields = document.querySelector("#profileSetupBusinessFields");
+  if (businessFields) {
+    if (mode === "B2B") {
+      businessFields.style.display = "grid";
+      businessFields.classList.remove("hidden");
+      businessFields.querySelectorAll("input").forEach(input => {
+        input.disabled = false;
+        input.required = (input.name === "company_name");
+      });
+    } else {
+      businessFields.style.display = "none";
+      businessFields.classList.add("hidden");
+      businessFields.querySelectorAll("input").forEach(input => {
+        input.disabled = true;
+        input.required = false;
+      });
+    }
+  }
+}
+
+function bindProfileSetup() {
+  const tabB2C = document.querySelector("#profileSetupTabB2C");
+  const tabB2B = document.querySelector("#profileSetupTabB2B");
+
+  tabB2C?.addEventListener("click", () => setProfileSetupMode("B2C"));
+  tabB2B?.addEventListener("click", () => setProfileSetupMode("B2B"));
+
+  const profileSetupForm = document.querySelector("#profileSetupForm");
+  profileSetupForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (profileSetupForm.dataset.busy === "true") return;
+    setFormBusy(profileSetupForm, true, "Saving...");
+    try {
+      const body = Object.fromEntries(new FormData(profileSetupForm).entries());
+      body.account_type = document.querySelector("#profileSetupAccountType")?.value || "B2C";
+      
+      const data = await api("/api/auth/complete-profile", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      toast(data.message || "Profile completed successfully!");
+      state.currentUser = data.user;
+      
+      if (data.auth_token) {
+        state.authToken = data.auth_token;
+        localStorage.setItem("mc_auth_token", data.auth_token);
+      }
+      
+      updateAuthUi();
+      
+      const modal = document.querySelector("#profileSetupModal");
+      if (modal) modal.close();
+
+      // Redirect based on role
+      let targetUrl = "/";
+      if (state.currentUser.is_admin) {
+        targetUrl = "/admin";
+      } else if ((state.currentUser.account_type || "B2C") === "B2B") {
+        targetUrl = "/admin";
+      } else {
+        targetUrl = "/#account-settings";
+      }
+      window.location.assign(targetUrl);
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      setFormBusy(profileSetupForm, false);
+    }
+  });
+
+  document.querySelector("#profileSetupLogoutBtn")?.addEventListener("click", async () => {
+    const modal = document.querySelector("#profileSetupModal");
+    if (modal) modal.close();
+    await logout();
+  });
+
+
+  document.querySelector("#profileSetupEmailBtn")?.addEventListener("click", async () => {
+    const modal = document.querySelector("#profileSetupModal");
+    if (modal) modal.close();
+    await logout();
+    showAuth("login", "B2C");
+  });
+
+  const modal = document.querySelector("#profileSetupModal");
+  modal?.addEventListener("cancel", (event) => {
+    event.preventDefault(); // Prevents escape closing
+  });
 }
 
 function addToCart(productId) {
@@ -1805,7 +1942,7 @@ function bindAuth() {
 
   const signupForm = document.querySelector("#signupForm");
   const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
-  const googleSignupBtn = document.querySelector("#googleSignupBtn");
+
   const referralToggleBtn = document.querySelector("#referralToggleBtn");
   const referralCodeField = document.querySelector("#referralCodeField");
   const emailOtpLength = 6;
@@ -1833,9 +1970,7 @@ function bindAuth() {
     }, 1000);
   };
 
-  googleSignupBtn?.addEventListener("click", () => {
-    window.location.assign(`/api/auth/google/start?account_type=${encodeURIComponent(state.authMode || "B2C")}`);
-  });
+
 
   referralToggleBtn?.addEventListener("click", () => {
     const isHidden = referralCodeField?.classList.toggle("hidden");
@@ -2753,6 +2888,7 @@ async function init() {
   bindEvents();
   bindPromoCarousel();
   bindAuth();
+  bindProfileSetup();
   bindCheckout();
   bindCommunityForum();
   bindSettings();

@@ -7439,3 +7439,36 @@ button {
     z-index: 999 !important;
   }
 }
+
+/* Profile Setup Modal custom styles */
+#profileSetupModal {
+  max-width: min(520px, calc(100vw - 24px));
+}
+
+#profileSetupModal .auth-divider {
+  margin: 10px 0;
+}
+
+#profileSetupModal .social-auth-btn {
+  font-size: 15px;
+  min-height: 48px;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+}
+
+#profileSetupModal .social-auth-btn .google-mark {
+  height: 24px;
+  width: 24px;
+  font-size: 11px;
+}
+
+#profileSetupModal .checkout-form {
+  gap: 12px;
+}
+
+#profileSetupModal label {
+  gap: 4px;
+}
+
+#profileSetupModal input {
+  min-height: 42px;
+}

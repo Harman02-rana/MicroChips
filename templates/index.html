@@ -546,16 +546,7 @@
           <p class="form-help" data-auth-help>Customer accounts are for individual purchases and quick reorders.</p>
           <small>Takes only about 15 seconds or less</small>
         </div>
-        <button class="social-auth-btn" id="googleSignupBtn" type="button" aria-label="Sign up via Google">
-          <span class="google-mark" aria-hidden="true">G</span>
-          <span>Sign up via Google</span>
-        </button>
-        <div class="auth-divider"><span>OR</span></div>
-        <button class="email-signup-heading" type="button" disabled>
-          <i data-lucide="pen-line" aria-hidden="true"></i>
-          <span>Sign up using another email</span>
-          <i data-lucide="chevron-down" aria-hidden="true"></i>
-        </button>
+
         <input name="account_type" type="hidden" value="B2C">
         <label>Name<input name="name" required></label>
         <label>Email<input name="email" type="email" required></label>
@@ -579,6 +570,70 @@
         <label>Password<span class="password-field"><input name="password" type="password" minlength="6" required><button class="password-toggle" type="button" aria-label="Show password" data-password-toggle>&#128065;</button></span></label>
         <button class="primary-btn" type="submit">Verify OTP / Create Account</button>
       </form>
+    </dialog>
+
+    <dialog class="modal" id="profileSetupModal" style="pointer-events: auto;">
+      <div class="modal-close-row" style="justify-content: space-between; align-items: center;">
+        <span style="font-size: 13px; color: var(--muted);" id="profileSetupUserEmail"></span>
+        <button class="secondary-btn" id="profileSetupLogoutBtn" type="button" style="min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 12px; width: auto;">Logout</button>
+      </div>
+
+      <div class="profile-setup-intro">
+        <div class="profile-setup-icon" aria-hidden="true">
+          <span class="profile-setup-card-line"></span>
+          <span class="profile-setup-avatar"></span>
+          <span class="profile-setup-card-line short"></span>
+        </div>
+        <p class="profile-setup-kicker" style="color: var(--accent-strong); font-weight: 800; font-size: 15px; text-transform: uppercase; letter-spacing: 1px; margin-top: 8px; margin-bottom: 2px;">We’re almost there!</p>
+        <h2 style="font-size: 26px; font-weight: 800; margin-top: 4px; margin-bottom: 8px;">Finish setting up your profile</h2>
+        <p class="form-help" style="margin-top: 0; margin-bottom: 16px;">Finish setting up your profile to personalize your experience</p>
+      </div>
+
+      <form id="profileSetupForm" class="checkout-form" style="display: grid; gap: 16px;">
+        <div class="auth-mode-switch" aria-label="Account profile type" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 10px;">
+          <button type="button" class="active" id="profileSetupTabB2C" data-setup-mode="B2C">Customer</button>
+          <button type="button" id="profileSetupTabB2B" data-setup-mode="B2B">Business / Distributor</button>
+        </div>
+        
+        <input name="account_type" type="hidden" value="B2C" id="profileSetupAccountType">
+
+        <div id="profileSetupOauthInfo" style="background: rgba(148, 163, 184, 0.08); border: 1px solid var(--border); border-radius: 14px; padding: 12px 16px; margin-bottom: 4px;">
+          <p style="margin: 0; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px;">
+            <span id="profileSetupAuthIcon" style="font-size: 16px;">📧</span>
+            <span>Authenticated via <strong id="profileSetupAuthMethod" style="color: var(--text);">Email</strong></span>
+          </p>
+        </div>
+
+        <label>Name
+          <input name="name" id="profileSetupNameInput" required placeholder="Enter your full name">
+        </label>
+        <label>Phone
+          <input name="phone" id="profileSetupPhoneInput" type="tel" required placeholder="Enter your phone number (e.g. +91 99999 99999)">
+        </label>
+
+        <div class="business-fields hidden" id="profileSetupBusinessFields" style="display: none; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr));">
+          <label style="grid-column: span 2;">Company name
+            <input name="company_name" id="profileSetupCompanyNameInput" placeholder="Registered business name">
+          </label>
+          <label>GSTIN
+            <input name="gstin" id="profileSetupGstinInput" maxlength="15" placeholder="15-char GSTIN">
+          </label>
+          <label>Business address
+            <input name="business_address" id="profileSetupBusinessAddressInput" placeholder="Registered business address">
+          </label>
+        </div>
+
+        <button class="primary-btn" type="submit" style="margin-top: 8px; min-height: 50px; font-size: 16px; font-weight: 800;">Complete Setup</button>
+        
+
+      </form>
+
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5;">
+        By completing your profile, you agree to our 
+        <a href="/help#terms" target="_blank" style="color: var(--accent-strong); text-decoration: none;">Terms & Conditions</a> 
+        and 
+        <a href="/help#privacy" target="_blank" style="color: var(--accent-strong); text-decoration: none;">Privacy Policy</a>.
+      </div>
     </dialog>
 
     <dialog class="modal product-modal" id="productModal"></dialog>

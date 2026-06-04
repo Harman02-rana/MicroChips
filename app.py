@@ -220,6 +220,7 @@ class UserModel(Base):
     email_verified = Column(Boolean, default=False)
     phone_verified = Column(Boolean, default=False)
     status         = Column(String(30), default="Active")
+    profile_completed = Column(Boolean, default=False, nullable=True)
     last_login     = Column(DateTime(timezone=True), nullable=True)
     reset_password_hash       = Column(Text, nullable=True)
     reset_password_expires_at = Column(DateTime(timezone=True), nullable=True)
@@ -354,6 +355,7 @@ def ensure_compatible_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(30) DEFAULT 'customer'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN DEFAULT false",
         "ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'Microchip'",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100)",
@@ -400,6 +402,7 @@ def ensure_sqlite_schema():
         "ALTER TABLE users ADD COLUMN full_name VARCHAR(255)",
         "ALTER TABLE users ADD COLUMN reset_password_hash TEXT",
         "ALTER TABLE users ADD COLUMN reset_password_expires_at DATETIME",
+        "ALTER TABLE users ADD COLUMN profile_completed BOOLEAN DEFAULT 0",
     ]
     with engine.begin() as connection:
         for statement in ddl_statements:
@@ -426,6 +429,7 @@ def ensure_sqlite_schema():
                     email_verified BOOLEAN DEFAULT 0,
                     phone_verified BOOLEAN DEFAULT 0,
                     status VARCHAR(30) DEFAULT 'Active',
+                    profile_completed BOOLEAN DEFAULT 0,
                     last_login DATETIME,
                     reset_password_hash TEXT,
                     reset_password_expires_at DATETIME,
@@ -437,7 +441,7 @@ def ensure_sqlite_schema():
             target_columns = [
                 "id", "email", "phone", "password_hash", "name", "full_name",
                 "account_type", "role", "company_name", "gstin", "is_admin",
-                "email_verified", "phone_verified", "status", "last_login",
+                "email_verified", "phone_verified", "status", "profile_completed", "last_login",
                 "reset_password_hash", "reset_password_expires_at",
                 "created_at", "updated_at",
             ]
@@ -1023,13 +1027,14 @@ def user_to_dict(u: UserModel) -> dict:
         "phone_verified": u.phone_verified,
         "last_login":     u.last_login.isoformat() if u.last_login else "",
         "created_at":     u.created_at.isoformat() if u.created_at else "",
+        "profile_completed": bool(getattr(u, "profile_completed", False)),
     }
 
 def public_user(u):
     if u is None:
         return None
     if isinstance(u, dict):
-        return {k: u.get(k) for k in ("id", "name", "full_name", "email", "phone", "account_type", "role", "company_name", "gstin", "is_admin", "created_at")}
+        return {k: u.get(k) for k in ("id", "name", "full_name", "email", "phone", "account_type", "role", "company_name", "gstin", "is_admin", "created_at", "profile_completed", "auth_provider")}
     return {
         "id":           str_id(u.id),
         "name":         u.name or "",
@@ -1042,15 +1047,21 @@ def public_user(u):
         "gstin":        u.gstin or "",
         "is_admin":     bool(u.is_admin),
         "created_at":   u.created_at.isoformat() if u.created_at else "",
+        "profile_completed": bool(getattr(u, "profile_completed", False)),
+        "auth_provider": "google" if (getattr(u, "auth_user_id", None) and not getattr(u, "password_hash", None)) else "email",
     }
 
 def auth_redirect_url(user):
     if isinstance(user, dict):
         account_type = user.get("account_type") or "B2C"
         is_admin = user.get("is_admin") or False
+        profile_completed = user.get("profile_completed") or False
     else:
         account_type = getattr(user, "account_type", None) or "B2C"
         is_admin = getattr(user, "is_admin", False) or False
+        profile_completed = getattr(user, "profile_completed", False) or False
+    if not is_admin and not profile_completed:
+        return "/?setup_profile=1"
     if is_admin:
         return "/admin"
     return "/admin" if account_type == "B2B" else "/"
@@ -1710,143 +1721,36 @@ def signup_page():
 
 @app.get("/api/auth/google/start")
 def api_google_oauth_start():
-    oauth_client = supabase_oauth_client()
-    if not oauth_client:
-        return api_error("Google signup needs Supabase Auth configuration.", 503)
-
-    account_type = normalize_account_type(request.args.get("account_type") or "B2C")
-    session["oauth_account_type"] = account_type
-    try:
-        response = oauth_client.auth.sign_in_with_oauth({
-            "provider": "google",
-            "options": {
-                "redirect_to": google_oauth_callback_url(),
-                "query_params": {
-                    "access_type": "offline",
-                    "prompt": "consent",
-                },
-            },
-        })
-        auth_url = oauth_response_url(response)
-        if not auth_url:
-            return api_error("Google signup could not be started.", 502)
-        return redirect(auth_url)
-    except Exception as exc:
-        print(f"Google OAuth start failed: {exc}")
-        return api_error("Google signup is temporarily unavailable.", 502)
+    return api_error("Google signup is disabled. Please use email signup with a Gmail address.", 403)
 
 @app.get("/auth/google/callback")
 def google_oauth_callback_page():
-    return """
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Completing Google signup...</title>
-    <style>
-      body { align-items: center; background: #020817; color: #f8fafc; display: grid; font-family: Inter, system-ui, sans-serif; min-height: 100vh; margin: 0; padding: 24px; }
-      main { border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 8px; background: #071426; max-width: 460px; padding: 24px; width: 100%; }
-      h1 { font-size: 22px; margin: 0 0 8px; }
-      p { color: #94a3b8; line-height: 1.5; margin: 0; }
-      a { color: #22e3ff; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Completing Google signup...</h1>
-      <p id="status">Please wait while we finish setting up your MicroChip Cart account.</p>
-    </main>
-    <script>
-      (async () => {
-        const status = document.querySelector("#status");
-        const query = new URLSearchParams(window.location.search);
-        const hash = new URLSearchParams((window.location.hash || "").replace(/^#/, ""));
-        const error = query.get("error_description") || hash.get("error_description") || query.get("error") || hash.get("error");
-        if (error) {
-          status.innerHTML = "Google signup failed. <a href='/?google_oauth=failed#signup'>Try again</a>.";
-          return;
-        }
-        const payload = {
-          code: query.get("code") || "",
-          access_token: hash.get("access_token") || "",
-          refresh_token: hash.get("refresh_token") || "",
-        };
-        try {
-          const response = await fetch("/api/auth/google/session", {
-            method: "POST",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          });
-          const data = await response.json();
-          if (!response.ok || data.success !== true) throw new Error(data.error || "Google signup failed.");
-          if (data.auth_token) localStorage.setItem("mc_auth_token", data.auth_token);
-          window.location.replace(data.redirect_url || "/");
-        } catch (err) {
-          status.innerHTML = (err.message || "Google signup failed.") + " <a href='/?google_oauth=failed#signup'>Try again</a>.";
-        }
-      })();
-    </script>
-  </body>
-</html>
-"""
+    return redirect("/?google_oauth=failed#signup")
 
 @app.post("/api/auth/google/session")
 def api_google_oauth_session():
-    if not supabase:
-        return api_error("Google signup needs Supabase Auth configuration.", 503)
-
-    data = request.get_json(silent=True) or {}
-    access_token = data.get("access_token") or ""
-    refresh_token = data.get("refresh_token") or ""
-    auth_code = data.get("code") or ""
-
-    try:
-        if access_token and refresh_token:
-            response = supabase.auth.set_session(access_token, refresh_token)
-        elif auth_code:
-            response = supabase.auth.exchange_code_for_session({"auth_code": auth_code})
-        else:
-            return api_error("Google did not return a login session.", 400)
-        _, auth_user = auth_response_session_user(response)
-    except Exception as exc:
-        print(f"Google OAuth session exchange failed: {exc}")
-        return api_error("Google signup could not be verified.", 401)
-
-    if not auth_user:
-        return api_error("Google signup could not load your profile.", 401)
-
-    db = DBSession()
-    try:
-        user, user_error = create_or_update_oauth_user(
-            db,
-            auth_user,
-            session.pop("oauth_account_type", "B2C"),
-        )
-        if user_error:
-            db.rollback()
-            return api_error(user_error, 400)
-        if (user.status or "Active") not in ("Active", "Pending"):
-            db.rollback()
-            return api_error("This account is not active. Please contact support.", 403)
-        db.commit()
-        db.refresh(user)
-        session_login_for(user)
-        token = make_auth_token(user)
-        return api_ok({"user": public_user(user), "auth_token": token, "redirect_url": auth_redirect_url(user)})
-    except Exception as exc:
-        db.rollback()
-        print(f"Google OAuth user setup failed: {exc}")
-        return api_error("Google signup could not finish. Please try again.", 500)
-    finally:
-        db.close()
+    return api_error("Google signup is disabled.", 403)
 
 @app.get("/admin")
 def admin_page():
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login_page"))
     is_owner_admin = session.get("admin_role") == "owner_admin" or session.get("owner_logged_in")
+    
+    if not is_owner_admin:
+        db = DBSession()
+        try:
+            user_id = session.get("user_id")
+            user = db.query(UserModel).filter_by(id=user_id).first()
+            if not user:
+                user = db.query(UserModel).filter_by(auth_user_id=user_id).first()
+            if user:
+                is_complete = check_and_auto_complete_profile(user, db)
+                if not is_complete:
+                    return redirect("/?setup_profile=1")
+        finally:
+            db.close()
+
     return render_template("admin.html", store_mode=DATABASE_LABEL, admin_email=ADMIN_EMAIL, is_owner_admin=is_owner_admin)
 
 @app.get("/admin/login")
@@ -1947,7 +1851,7 @@ PASSWORD_RESET_LENGTH = 6
 PASSWORD_RESET_GENERIC_MESSAGE = "If an account exists for that email, a reset code has been sent."
 
 def email_otp_digest(email, otp):
-    secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
+    secret = auth_token_secret()
     message = f"{normalize_email(email)}:{str(otp or '').strip()}".encode("utf-8")
     return hmac.new(secret, message, hashlib.sha256).hexdigest()
 
@@ -1956,7 +1860,7 @@ def password_reset_digest(email, code):
     return hmac.new(auth_token_secret(), message, hashlib.sha256).hexdigest()
 
 def email_otp_token_signature(email, digest, expires_at):
-    secret = str(app.secret_key or FLASK_SECRET_KEY or "microchip-cart").encode("utf-8")
+    secret = auth_token_secret()
     message = f"{normalize_email(email)}:{digest}:{expires_at}".encode("utf-8")
     return hmac.new(secret, message, hashlib.sha256).hexdigest()
 
@@ -2134,6 +2038,9 @@ def validate_signup_payload(data, require_otp=False):
     name = data.get("name") or data.get("full_name")
     if not name or not data.get("email") or not data.get("password"):
         return "Name, email and password are required."
+    email = normalize_email(data.get("email") or "")
+    if not email.endswith("@gmail.com"):
+        return "Only Gmail addresses are supported for signup."
     if require_otp and not (data.get("otp") or "").strip():
         return "Email OTP is required."
     if require_otp and not re.fullmatch(rf"\d{{{EMAIL_OTP_LENGTH}}}", data.get("otp") or ""):
@@ -2217,6 +2124,9 @@ def api_send_email_otp():
     if not email:
         print("SEND EMAIL OTP ERROR: missing email.")
         return api_error("Email is required.", 400)
+    if not email.endswith("@gmail.com"):
+        print("SEND EMAIL OTP ERROR: non-gmail email.")
+        return api_error("Only Gmail addresses are supported for signup.", 400)
 
     db = DBSession()
     try:
@@ -2656,10 +2566,131 @@ def api_logout():
     return api_ok()
 
 
+def is_profile_complete(user):
+    if not user:
+        return True
+    if getattr(user, "is_admin", False):
+        return True
+    return bool(getattr(user, "profile_completed", False))
+
+def check_and_auto_complete_profile(user, db):
+    if not user:
+        return False
+    if getattr(user, "profile_completed", False):
+        return True
+    if getattr(user, "is_admin", False):
+        user.profile_completed = True
+        db.commit()
+        return True
+    
+    # Check if they have complete details pre-filled
+    has_name = bool((user.name or "").strip()) and not (user.name or "").strip().lower().startswith("google user")
+    has_phone = bool((user.phone or "").strip())
+    
+    if (user.account_type or "B2C") == "B2B":
+        has_business = bool((user.company_name or "").strip())
+        if has_name and has_phone and has_business:
+            user.profile_completed = True
+            db.commit()
+            return True
+    else:
+        if has_name and has_phone:
+            user.profile_completed = True
+            db.commit()
+            return True
+    return False
+
 @app.get("/api/auth/me")
 def api_me():
     user = current_user()
+    if user:
+        db = DBSession()
+        try:
+            row = db.query(UserModel).filter_by(id=user.id).first()
+            if not row:
+                row = db.query(UserModel).filter_by(auth_user_id=user.id).first()
+            if row:
+                check_and_auto_complete_profile(row, db)
+                user = row
+        finally:
+            db.close()
     return api_ok({"user": public_user(user), "auth_token": make_auth_token(user) if user else ""})
+
+@app.post("/api/auth/complete-profile")
+def api_complete_profile():
+    user = current_user()
+    if not user:
+        return api_error("Please log in first.", 401)
+        
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    phone = (data.get("phone") or "").strip()
+    account_type = normalize_account_type(data.get("account_type") or "B2C")
+    
+    if not name or not phone:
+        return api_error("Name and phone number are required.", 400)
+        
+    db = DBSession()
+    try:
+        row = db.query(UserModel).filter_by(id=user.id).first()
+        if not row:
+            row = db.query(UserModel).filter_by(auth_user_id=user.id).first()
+        if not row:
+            return api_error("User not found.", 404)
+            
+        existing_phone = db.query(UserModel).filter(UserModel.phone == phone, UserModel.id != row.id).first()
+        if existing_phone:
+            return api_error("This phone number is already registered.", 400)
+            
+        row.name = name
+        row.full_name = name
+        row.phone = phone
+        row.account_type = account_type
+        row.role = "business" if account_type == "B2B" else "customer"
+        
+        if account_type == "B2B":
+            company_name = (data.get("company_name") or "").strip()
+            gstin = (data.get("gstin") or "").strip().upper()
+            business_address = (data.get("business_address") or "").strip()
+            
+            if not company_name:
+                return api_error("Company name is required for business accounts.", 400)
+            if gstin and not re.match(GSTIN_REGEX, gstin):
+                return api_error("Invalid GST format. Please enter a valid 15-character GSTIN.", 400)
+                
+            row.company_name = company_name
+            row.gstin = gstin
+            
+            business = db.query(BusinessProfileModel).filter_by(id=row.id).first()
+            if not business:
+                business = BusinessProfileModel(id=row.id)
+                db.add(business)
+            business.business_name = company_name
+            business.business_address = business_address
+            business.contact_number = phone
+            business.gst_number = gstin
+            business.approval_status = getattr(business, "approval_status", "Pending") or "Pending"
+            business.updated_at = now_utc()
+            
+        row.profile_completed = True
+        row.updated_at = now_utc()
+        db.commit()
+        db.refresh(row)
+        
+        session_login_for(row)
+        
+        return api_ok({
+            "message": "Profile setup completed.",
+            "user": public_user(row),
+            "auth_token": make_auth_token(row),
+            "redirect_url": auth_redirect_url(row)
+        })
+    except Exception as exc:
+        db.rollback()
+        print(f"Complete profile failed: {exc}")
+        return api_error("Could not complete profile setup. Please try again.", 500)
+    finally:
+        db.close()
 
 
 @app.patch("/api/auth/me")

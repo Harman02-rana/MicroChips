@@ -87,6 +87,7 @@ class User(Base):
     is_admin      = Column(Boolean, default=False)
     email_verified = Column(Boolean, default=False)
     phone_verified = Column(Boolean, default=False)
+    profile_completed = Column(Boolean, default=False, nullable=True)
     created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 class Product(Base):
