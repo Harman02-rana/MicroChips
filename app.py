@@ -2303,15 +2303,18 @@ def api_verify_email_otp():
     print("OTP VERIFY EMAIL:", data.get("email"))
     print("OTP VERIFY LENGTH:", len(data.get("otp") or ""))
     print("VERIFY TYPE:", "app-email")
+    def signup_error(message):
+        return api_error(message, 200)
+
     validation_error = validate_signup_payload(data, require_otp=True)
     if validation_error:
         print(f"OTP VERIFY VALIDATION FAILED: {validation_error}")
-        return api_error(validation_error, 400)
+        return signup_error(validation_error)
 
     otp_ok, otp_error = verify_app_email_otp(data["email"], data["otp"], data.get("otp_token"))
     if not otp_ok:
         print(f"APP EMAIL OTP VERIFICATION FAILED: {otp_error}")
-        return api_error(INVALID_EMAIL_OTP_MESSAGE, 400)
+        return signup_error(INVALID_EMAIL_OTP_MESSAGE)
 
     print("APP EMAIL OTP VERIFIED")
     metadata = {
@@ -2325,7 +2328,7 @@ def api_verify_email_otp():
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
             print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
-            return api_error("Email verified, but auth setup failed. Please try again.", 400)
+            return signup_error("Email verified, but auth setup failed. Please try again.")
         store_password = False
     else:
         print("Creating local password user after OTP verification.")
@@ -2343,7 +2346,7 @@ def api_verify_email_otp():
                     "user": public_user(existing_user),
                 })
             db.rollback()
-            return api_error(user_error, 400)
+            return signup_error(user_error)
         user_payload = signup_user_response(
             user,
             "Pending" if data["account_type"] == "B2B" else "Approved",
@@ -2368,15 +2371,15 @@ def api_verify_email_otp():
         if isinstance(exc, IntegrityError):
             error_text = str(getattr(exc, "orig", exc)).lower()
             if "phone" in error_text:
-                return api_error("This phone number is already registered.", 400)
+                return signup_error("This phone number is already registered.")
             if "email" in error_text:
-                return api_error("This email already has an account.", 400)
+                return signup_error("This email already has an account.")
             if "business_profiles" in error_text or "business profile" in error_text:
-                return api_error("Business profile could not be saved. Please check your company details and try again.", 400)
+                return signup_error("Business profile could not be saved. Please check your company details and try again.")
             if "not-null" in error_text or "not null" in error_text:
-                return api_error("Please complete all required signup fields.", 400)
+                return signup_error("Please complete all required signup fields.")
         if isinstance(exc, SQLAlchemyError):
-            return api_error("Account could not be created. Please check your signup details and try again.", 400)
+            return signup_error("Account could not be created. Please check your signup details and try again.")
         return api_error("Account could not be created. Please try again.", 500)
     finally:
         db.close()
