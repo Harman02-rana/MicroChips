@@ -127,6 +127,7 @@ const inr = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0
 });
 const API_TIMEOUT_MS = 20000;
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 function moneyLabel(value) {
   return `INR ${inr.format(Number(value || 0))}`;
@@ -2121,6 +2122,24 @@ function bindAuth() {
         return;
       }
       body.email = visibleEmail;
+      if (body.account_type === "B2B") {
+        body.gstin = String(body.gstin || "").trim().toUpperCase();
+        if (!String(body.company_name || "").trim()) {
+          toast("Business Name is required for business accounts.");
+          setFormBusy(form, false);
+          return;
+        }
+        if (!body.gstin) {
+          toast("GSTIN is required for business accounts.");
+          setFormBusy(form, false);
+          return;
+        }
+        if (!GSTIN_PATTERN.test(body.gstin)) {
+          toast("Invalid GST format. Please enter a valid 15-character GSTIN.");
+          setFormBusy(form, false);
+          return;
+        }
+      }
       body.otp_token = String(body.otp_token || "");
       if (!body.otp_token) {
         try {
