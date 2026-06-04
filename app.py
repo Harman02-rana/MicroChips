@@ -1089,7 +1089,19 @@ def public_user(u):
     if u is None:
         return None
     if isinstance(u, dict):
-        return {k: u.get(k) for k in ("id", "name", "full_name", "email", "phone", "account_type", "role", "company_name", "gstin", "is_admin", "created_at", "profile_completed", "auth_provider")}
+        return {k: u.get(k) for k in ("id", "name", "full_name", "email", "phone", "account_type", "role", "company_name", "gstin", "is_admin", "created_at", "profile_completed", "auth_provider", "approval_status")}
+    
+    approval_status = "Approved"
+    if u.account_type == "B2B":
+        db = DBSession()
+        try:
+            business = db.query(BusinessProfileModel).filter_by(id=u.id).first()
+            approval_status = business.approval_status if business else "Pending"
+        except Exception:
+            approval_status = "Pending"
+        finally:
+            db.close()
+
     return {
         "id":           str_id(u.id),
         "name":         u.name or "",
@@ -1104,6 +1116,7 @@ def public_user(u):
         "created_at":   u.created_at.isoformat() if u.created_at else "",
         "profile_completed": bool(getattr(u, "profile_completed", False)),
         "auth_provider": "google" if (getattr(u, "auth_user_id", None) and not getattr(u, "password_hash", None)) else "email",
+        "approval_status": approval_status,
     }
 
 def auth_redirect_url(user):
@@ -1111,15 +1124,30 @@ def auth_redirect_url(user):
         account_type = user.get("account_type") or "B2C"
         is_admin = user.get("is_admin") or False
         profile_completed = user.get("profile_completed") or False
+        approval_status = user.get("approval_status") or "Approved"
     else:
         account_type = getattr(user, "account_type", None) or "B2C"
         is_admin = getattr(user, "is_admin", False) or False
         profile_completed = getattr(user, "profile_completed", False) or False
+        
+        approval_status = "Approved"
+        if account_type == "B2B":
+            db = DBSession()
+            try:
+                business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
+                approval_status = business.approval_status if business else "Pending"
+            except Exception:
+                approval_status = "Pending"
+            finally:
+                db.close()
+                
     if not is_admin and not profile_completed:
         return "/?setup_profile=1"
     if is_admin:
         return "/admin"
-    return "/admin" if account_type == "B2B" else "/"
+    if account_type == "B2B":
+        return "/admin" if approval_status == "Approved" else "/?pending_approval=1"
+    return "/"
 
 def product_to_dict(p: ProductModel) -> dict:
     count = p.rating_count or 0
@@ -1813,6 +1841,14 @@ def admin_page():
                 is_complete = check_and_auto_complete_profile(user, db)
                 if not is_complete:
                     return redirect("/?setup_profile=1")
+                
+                # Check business approval status for B2B users
+                if (user.account_type or "B2C") == "B2B":
+                    business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
+                    if not business or (business.approval_status or "Pending") != "Approved":
+                        session.pop("admin_logged_in", None)
+                        session.pop("admin_role", None)
+                        return redirect("/?pending_approval=1")
         finally:
             db.close()
 
@@ -2517,6 +2553,7 @@ def api_login_direct():
                     return api_error("Please verify your email before logging in.", 403)
                 if (local_user.status or "Active") not in ("Active", "Pending"):
                     return api_error("This account is not active. Please contact support.", 403)
+                check_and_auto_complete_profile(local_user, db)
                 local_user.last_login = now_utc()
                 db.commit()
                 db.refresh(local_user)
@@ -2538,6 +2575,7 @@ def api_login_direct():
                 return api_error("Please verify your email before logging in.", 403)
             if (user.status or "Active") not in ("Active", "Pending"):
                 return api_error("This account is not active. Please contact support.", 403)
+            check_and_auto_complete_profile(user, db)
             user.last_login = now_utc()
             db.commit()
             db.refresh(user)
@@ -2604,6 +2642,7 @@ def api_login_direct():
             db.rollback()
             return api_error("Please verify your email before logging in.", 403)
 
+        check_and_auto_complete_profile(user, db)
         user.last_login = now_utc()
         db.commit()
         db.refresh(user)
@@ -3315,10 +3354,35 @@ def api_admin_login():
     data     = request.get_json(silent=True) or {}
     email    = normalize_email(data.get("email"))
     password = data.get("password") or ""
+    
     if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
         session["admin_logged_in"] = True
         session["admin_role"] = "owner_admin"
         return api_ok()
+        
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(email=email).first()
+        if user and user.password_hash and check_password_hash(user.password_hash, password):
+            if (user.account_type or "B2C") == "B2B":
+                if not user.email_verified:
+                    return api_error("Please verify your email before logging in.", 403)
+                
+                business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
+                if not business or (business.approval_status or "Pending") != "Approved":
+                    return api_error("Your business account is pending approval. Please wait for an administrator to review your request.", 403)
+                
+                if (user.status or "Active") not in ("Active", "Pending"):
+                    return api_error("This account is not active. Please contact support.", 403)
+                
+                check_and_auto_complete_profile(user, db)
+                session_login_for(user)
+                user.last_login = now_utc()
+                db.commit()
+                return api_ok()
+    finally:
+        db.close()
+        
     return api_error("Invalid admin credentials.", 401)
 
 

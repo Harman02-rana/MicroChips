@@ -1378,15 +1378,16 @@ function updateAuthUi() {
   if (loggedIn) {
     const name = state.currentUser.name || "User";
     const isBusinessUser = (state.currentUser.account_type || "B2C") === "B2B";
+    const isApprovedBusiness = isBusinessUser && (state.currentUser.approval_status === "Approved");
     if (document.querySelector("#profileNameLabel")) {
       document.querySelector("#profileNameLabel").textContent = name;
     }
-    els.profileBusinessPanelBtn?.classList.toggle("hidden", !isBusinessUser);
+    els.profileBusinessPanelBtn?.classList.toggle("hidden", !isApprovedBusiness);
     if (sidebarLabel) sidebarLabel.textContent = `Hello, ${name}`;
     if (sidebarActions) {
       sidebarActions.innerHTML = `
         <button type="button" class="sidebar-link" id="sidebarAccountBtn">Your Account</button>
-        ${isBusinessUser ? `<button type="button" class="sidebar-link" id="sidebarBusinessPanelBtn">Business Panel</button>` : ""}
+        ${isApprovedBusiness ? `<button type="button" class="sidebar-link" id="sidebarBusinessPanelBtn">Business Panel</button>` : ""}
         <button type="button" class="sidebar-link" id="sidebarLogoutBtn" style="color:var(--danger);">Logout</button>
       `;
       document.querySelector("#sidebarAccountBtn")?.addEventListener("click", () => {
@@ -2132,6 +2133,10 @@ function handleHashRoute() {
   const params = new URLSearchParams(window.location.search || "");
   if (params.get("google_oauth") === "failed") {
     toast("Google signup failed. Please try again or use email signup.");
+    window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash || ""}`);
+  }
+  if (params.get("pending_approval") === "1") {
+    toast("Your business account is pending approval. Please wait for an administrator to review your details.");
     window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash || ""}`);
   }
   const hash = decodeURIComponent(location.hash || "");
