@@ -2181,8 +2181,12 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
 
     existing_verified = bool(existing and existing.email_verified)
     if existing_verified:
-        account_type = normalize_account_type(existing.account_type)
-        role = existing.role or ("business" if account_type == "B2B" else "customer")
+        if account_type != "B2B":
+            account_type = normalize_account_type(existing.account_type)
+        role = "business" if account_type == "B2B" else (existing.role or "customer")
+
+    if account_type == "B2B" and getattr(existing, "account_type", None) != "B2B":
+        user.status = "Pending"
 
     user.name = full_name
     user.full_name = full_name
