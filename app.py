@@ -1506,6 +1506,9 @@ def send_order_email(order):
     )
 
 def send_order_email_async(order):
+    smtp_ok, _ = smtp_config_status()
+    if not smtp_ok:
+        return
     import threading
     def send():
         with app.app_context():
@@ -1513,7 +1516,7 @@ def send_order_email_async(order):
                 send_order_email(order)
             except Exception as e:
                 print(f"Async order email send failed: {e}")
-    threading.Thread(target=send).start()
+    threading.Thread(target=send, daemon=True).start()
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
@@ -2569,12 +2572,16 @@ def api_login_direct():
                 db.refresh(local_user)
                 session_login_for(local_user)
                 return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
-            if not supabase:
+            if not supabase or not SUPABASE_AUTH_LOGIN_FALLBACK:
                 return api_error("Invalid email or password.", 401)
             local_password_failed = True
 
-        should_try_supabase_auth = bool(supabase and (not local_user or not local_user.password_hash or local_password_failed))
-        if not supabase or (not SUPABASE_AUTH_LOGIN_FALLBACK and not should_try_supabase_auth):
+        should_try_supabase_auth = bool(
+            supabase
+            and SUPABASE_AUTH_LOGIN_FALLBACK
+            and (not local_user or not local_user.password_hash or local_password_failed)
+        )
+        if not should_try_supabase_auth:
             user = local_user
             if not user and can_auto_create_test_account():
                 print(f"LOCAL TEST AUTH: auto-creating fallback account for {mask_email_for_log(email)}")

@@ -1921,7 +1921,8 @@ function bindAuth() {
       body.account_type = state.authMode;
       const data = await api("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        timeoutMs: 10000
       });
       state.currentUser = data.user;
       if (data.auth_token) {
@@ -2265,14 +2266,15 @@ function bindCheckout() {
       }
       const data = await api("/api/orders", {
         method: "POST",
-        body: JSON.stringify(orderPayload)
+        body: JSON.stringify(orderPayload),
+        timeoutMs: 12000
       });
       state.cart = [];
       saveCart();
       closeCart();
       els.checkoutModal.close();
       toast(`Order placed: ${data.order.invoice_number}`);
-      await loadProducts();
+      renderProducts();
     } catch (error) {
       if (error.status === 401 && /login/i.test(error.message || "")) {
         state.currentUser = null;
