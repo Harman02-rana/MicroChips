@@ -126,6 +126,7 @@ const els = {
 const inr = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0
 });
+const API_TIMEOUT_MS = 20000;
 
 function moneyLabel(value) {
   return `INR ${inr.format(Number(value || 0))}`;
@@ -289,11 +290,28 @@ async function api(path, options = {}) {
   if (authToken && !headers["X-Auth-Token"]) {
     headers["X-Auth-Token"] = authToken;
   }
-  const res = await fetch(path, {
-    credentials: "same-origin",
-    headers,
-    ...options
-  });
+  const controller = options.signal ? null : new AbortController();
+  const timeoutMs = Number(options.timeoutMs || API_TIMEOUT_MS);
+  const timeoutId = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+  let res;
+  try {
+    const { timeoutMs: _timeoutMs, signal: providedSignal, ...fetchOptions } = options;
+    res = await fetch(path, {
+      credentials: "same-origin",
+      ...fetchOptions,
+      headers,
+      signal: controller?.signal || providedSignal
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      const timeoutError = new Error("This is taking longer than expected. Please try again.");
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
   let data = {};
   try {
     data = await res.json();

@@ -85,7 +85,7 @@ if create_client and supabase_url not in SUPABASE_PLACEHOLDERS and supabase_key 
 # ── SQLAlchemy / PostgreSQL ───────────────────────────────────────────────────
 from sqlalchemy import (
     create_engine, text,
-    Column, String, Boolean, Numeric, Integer, Text, DateTime, JSON
+    Column, String, Boolean, Numeric, Integer, Text, DateTime, JSON, func
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -170,7 +170,7 @@ def create_app_engine(database_url):
 
 
 engine = create_app_engine(DATABASE_URL)
-DBSession = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+DBSession = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 
 
 class GUID(TypeDecorator):
@@ -1208,14 +1208,16 @@ def review_to_dict(r: ReviewModel) -> dict:
         "created_at": r.created_at.isoformat() if r.created_at else "",
     }
 
-def can_delete_community_item(item) -> bool:
+def can_delete_community_item(item, user=None) -> bool:
     if session.get("admin_logged_in"):
         return True
-    user = current_user()
+    if user is None:
+        user = current_user()
     return bool(user and str_id(getattr(item, "user_id", None)) == str_id(user.id))
 
-def post_to_dict(p: CommunityPostModel, db) -> dict:
-    reply_count = db.query(CommunityReplyModel).filter_by(post_id=p.id).count()
+def post_to_dict(p: CommunityPostModel, db, user=None, reply_count=None) -> dict:
+    if reply_count is None:
+        reply_count = db.query(CommunityReplyModel).filter_by(post_id=p.id).count()
     return {
         "id":         str_id(p.id),
         "user_id":    str_id(p.user_id),
@@ -1226,18 +1228,18 @@ def post_to_dict(p: CommunityPostModel, db) -> dict:
         "likes":      p.likes or 0,
         "liked_by":   p.liked_by or [],
         "reply_count": reply_count,
-        "can_delete": can_delete_community_item(p),
+        "can_delete": can_delete_community_item(p, user),
         "created_at": p.created_at.isoformat() if p.created_at else "",
     }
 
-def reply_to_dict(r: CommunityReplyModel) -> dict:
+def reply_to_dict(r: CommunityReplyModel, user=None) -> dict:
     return {
         "id":         str_id(r.id),
         "post_id":    str_id(r.post_id),
         "user_id":    str_id(r.user_id),
         "user_name":  r.user_name or "Anonymous",
         "content":    r.content,
-        "can_delete": can_delete_community_item(r),
+        "can_delete": can_delete_community_item(r, user),
         "created_at": r.created_at.isoformat() if r.created_at else "",
     }
 
@@ -2287,8 +2289,7 @@ def api_verify_email_otp():
     }
     auth_user = None
     store_password = True
-    requires_auth_user = bool(supabase and engine.dialect.name == "postgresql")
-    if supabase and (SUPABASE_AUTH_SYNC_ON_SIGNUP or requires_auth_user):
+    if supabase and SUPABASE_AUTH_SYNC_ON_SIGNUP:
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
             print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
@@ -3064,10 +3065,20 @@ def api_review(product_id):
 
 @app.get("/api/community/posts")
 def api_get_community_posts():
+    user = current_user()
     db = DBSession()
     try:
         posts = db.query(CommunityPostModel).order_by(CommunityPostModel.created_at.desc()).all()
-        return api_ok({"posts": [post_to_dict(p, db) for p in posts]})
+        reply_counts = {}
+        if posts:
+            counts = (
+                db.query(CommunityReplyModel.post_id, func.count(CommunityReplyModel.id))
+                  .filter(CommunityReplyModel.post_id.in_([p.id for p in posts]))
+                  .group_by(CommunityReplyModel.post_id)
+                  .all()
+            )
+            reply_counts = {str_id(post_id): count for post_id, count in counts}
+        return api_ok({"posts": [post_to_dict(p, db, user, reply_counts.get(str_id(p.id), 0)) for p in posts]})
     finally:
         db.close()
 
@@ -3098,7 +3109,7 @@ def api_create_community_post():
         db.add(post)
         db.commit()
         db.refresh(post)
-        return api_ok({"post": post_to_dict(post, db)}, 201)
+        return api_ok({"post": post_to_dict(post, db, user)}, 201)
     finally:
         db.close()
 
@@ -3124,7 +3135,7 @@ def api_like_community_post(post_id):
         post.liked_by = liked_by
         db.commit()
         db.refresh(post)
-        return api_ok({"post": post_to_dict(post, db)})
+        return api_ok({"post": post_to_dict(post, db, user)})
     finally:
         db.close()
 
@@ -3149,13 +3160,14 @@ def api_delete_community_post(post_id):
 
 @app.get("/api/community/posts/<post_id>/replies")
 def api_get_community_replies(post_id):
+    user = current_user()
     db = DBSession()
     try:
         replies = (db.query(CommunityReplyModel)
                      .filter_by(post_id=post_id)
                      .order_by(CommunityReplyModel.created_at.asc())
                      .all())
-        return api_ok({"replies": [reply_to_dict(r) for r in replies]})
+        return api_ok({"replies": [reply_to_dict(r, user) for r in replies]})
     finally:
         db.close()
 
