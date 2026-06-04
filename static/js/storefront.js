@@ -2180,6 +2180,11 @@ function bindAuth() {
         showAuth("login", state.authMode);
       }
     } catch (error) {
+      console.error("Signup OTP/create account failed", {
+        message: error.message,
+        status: error.status,
+        data: error.data
+      });
       toast(error.message);
       setSignupStatus(error.message);
     } finally {

@@ -2312,9 +2312,11 @@ def api_verify_email_otp():
     if supabase and SUPABASE_AUTH_SYNC_ON_SIGNUP:
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
-            print(f"Supabase auth user setup failed after OTP verification: {auth_error}")
-            return signup_error("Email verified, but auth setup failed. Please try again.")
-        store_password = False
+            print(f"Supabase auth user setup failed after OTP verification; continuing with local website account: {auth_error}")
+            auth_user = None
+            store_password = True
+        else:
+            store_password = False
     else:
         print("Creating local password user after OTP verification.")
 
