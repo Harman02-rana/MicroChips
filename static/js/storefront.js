@@ -1823,8 +1823,8 @@ function setAuthMode(mode = "B2C") {
   }
   const signupGstin = document.querySelector("#signupForm [name='gstin']");
   if (signupGstin) {
-    signupGstin.required = isBusiness;
-    signupGstin.placeholder = isBusiness ? "15-char e.g., 22AAAAA0000A1Z5" : "Optional";
+    signupGstin.required = false;
+    signupGstin.placeholder = isBusiness ? "Optional GSTIN" : "Optional";
   }
   setBusinessFields(document.querySelector("#signupForm"), "account_type");
 }
@@ -2026,6 +2026,9 @@ function bindAuth() {
   const emailOtpInput = signupForm?.querySelector("[name='otp']");
   const otpEmailInput = signupForm?.querySelector("[name='otp_email']");
   const otpTokenInput = signupForm?.querySelector("[name='otp_token']");
+  const setSignupStatus = message => {
+    if (emailOtpHelp) emailOtpHelp.textContent = message || "";
+  };
   let emailOtpCooldownTimer = null;
   const startEmailOtpCooldown = seconds => {
     if (!sendEmailOtpBtn) return;
@@ -2033,7 +2036,7 @@ function bindAuth() {
     let remaining = Math.max(1, Number(seconds) || 60);
     sendEmailOtpBtn.disabled = true;
     sendEmailOtpBtn.textContent = `Resend OTP in ${remaining}s`;
-    if (emailOtpHelp) emailOtpHelp.textContent = `You can resend the OTP in ${remaining} seconds.`;
+    setSignupStatus(`You can resend the OTP in ${remaining} seconds.`);
     emailOtpCooldownTimer = setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
@@ -2041,11 +2044,11 @@ function bindAuth() {
         emailOtpCooldownTimer = null;
         sendEmailOtpBtn.disabled = false;
         sendEmailOtpBtn.textContent = "Resend Email OTP";
-        if (emailOtpHelp) emailOtpHelp.textContent = "Did not get the code? Use Resend Email OTP.";
+        setSignupStatus("Did not get the code? Use Resend Email OTP.");
         return;
       }
       sendEmailOtpBtn.textContent = `Resend OTP in ${remaining}s`;
-      if (emailOtpHelp) emailOtpHelp.textContent = `You can resend the OTP in ${remaining} seconds.`;
+      setSignupStatus(`You can resend the OTP in ${remaining} seconds.`);
     }, 1000);
   };
 
@@ -2129,12 +2132,7 @@ function bindAuth() {
           setFormBusy(form, false);
           return;
         }
-        if (!body.gstin) {
-          toast("GSTIN is required for business accounts.");
-          setFormBusy(form, false);
-          return;
-        }
-        if (!GSTIN_PATTERN.test(body.gstin)) {
+        if (body.gstin && !GSTIN_PATTERN.test(body.gstin)) {
           toast("Invalid GST format. Please enter a valid 15-character GSTIN.");
           setFormBusy(form, false);
           return;
@@ -2150,6 +2148,7 @@ function bindAuth() {
       body.otp = String(body.otp || "").trim();
       if (body.otp.length !== emailOtpLength) {
         toast("Invalid or expired OTP. Please request a new code.");
+        setSignupStatus("Invalid or expired OTP. Please request a new code.");
         setFormBusy(form, false);
         return;
       }
@@ -2178,6 +2177,7 @@ function bindAuth() {
       }
     } catch (error) {
       toast(error.message);
+      setSignupStatus(error.message);
     } finally {
       setFormBusy(form, false);
     }

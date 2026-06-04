@@ -2155,9 +2155,7 @@ def validate_signup_payload(data, require_otp=False):
     if data.get("account_type") == "B2B":
         if not data.get("company_name"):
             return "Business Name is required for business accounts."
-        if not data.get("gstin"):
-            return "GSTIN is required for business accounts."
-        if not re.match(GSTIN_REGEX, data["gstin"]):
+        if data.get("gstin") and not re.match(GSTIN_REGEX, data["gstin"]):
             return "Invalid GST format. Please enter a valid 15-character GSTIN."
     return None
 
@@ -2173,7 +2171,8 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     if phone:
         phone_user = db.query(UserModel).filter(UserModel.phone == phone).first()
         if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
-            return None, "This phone number is already registered."
+            print(f"SIGNUP PHONE CONFLICT: continuing without duplicate phone for {mask_email_for_log(email)}")
+            phone = None
 
     user = existing
     if not user:
