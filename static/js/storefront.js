@@ -1820,6 +1820,11 @@ function setAuthMode(mode = "B2C") {
     signupPhone.required = false;
     signupPhone.placeholder = isBusiness ? "Optional business contact number" : "";
   }
+  const signupGstin = document.querySelector("#signupForm [name='gstin']");
+  if (signupGstin) {
+    signupGstin.required = isBusiness;
+    signupGstin.placeholder = isBusiness ? "15-char e.g., 22AAAAA0000A1Z5" : "Optional";
+  }
   setBusinessFields(document.querySelector("#signupForm"), "account_type");
 }
 
@@ -2112,6 +2117,7 @@ function bindAuth() {
       const otpEmail = String(body.otp_email || "").trim();
       if (otpEmail && otpEmail !== visibleEmail) {
         toast("Please request a new OTP for this email.");
+        setFormBusy(form, false);
         return;
       }
       body.email = visibleEmail;
@@ -2125,6 +2131,7 @@ function bindAuth() {
       body.otp = String(body.otp || "").trim();
       if (body.otp.length !== emailOtpLength) {
         toast("Invalid or expired OTP. Please request a new code.");
+        setFormBusy(form, false);
         return;
       }
 

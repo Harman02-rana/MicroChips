@@ -2155,7 +2155,9 @@ def validate_signup_payload(data, require_otp=False):
     if data.get("account_type") == "B2B":
         if not data.get("company_name"):
             return "Business Name is required for business accounts."
-        if data.get("gstin") and not re.match(GSTIN_REGEX, data["gstin"]):
+        if not data.get("gstin"):
+            return "GSTIN is required for business accounts."
+        if not re.match(GSTIN_REGEX, data["gstin"]):
             return "Invalid GST format. Please enter a valid 15-character GSTIN."
     return None
 
