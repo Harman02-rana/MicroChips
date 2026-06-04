@@ -383,6 +383,15 @@ def ensure_compatible_schema():
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
         "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS user_name VARCHAR(255)",
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS event_metadata JSONB DEFAULT '{}'::jsonb",
+        "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
+        "CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id)",
+        "CREATE INDEX IF NOT EXISTS idx_community_replies_post_id ON community_replies(post_id)",
+        "CREATE INDEX IF NOT EXISTS idx_events_product_id ON events(product_id)",
+        "CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_products_is_sample ON products(is_sample)",
+        "CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active)",
+        "CREATE INDEX IF NOT EXISTS idx_business_profiles_approval_status ON business_profiles(approval_status)",
     ]
     with engine.begin() as connection:
         for statement in ddl_statements:
@@ -453,6 +462,22 @@ def ensure_sqlite_schema():
             connection.execute(text("DROP TABLE users"))
             connection.execute(text("ALTER TABLE users_schema_fix RENAME TO users"))
 
+    # Create SQLite indexes
+    sqlite_indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)",
+        "CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id)",
+        "CREATE INDEX IF NOT EXISTS idx_community_replies_post_id ON community_replies(post_id)",
+        "CREATE INDEX IF NOT EXISTS idx_products_is_sample ON products(is_sample)",
+        "CREATE INDEX IF NOT EXISTS idx_products_is_active ON products(is_active)",
+    ]
+    with engine.begin() as connection:
+        for stmt in sqlite_indexes:
+            try:
+                connection.execute(text(stmt))
+            except Exception:
+                pass
+
 
 def initialize_database():
     global engine, DBSession, DATABASE_LABEL
@@ -462,7 +487,7 @@ def initialize_database():
         db = DBSession()
         try:
             row = db.query(SettingsModel).filter_by(key="schema_version").first()
-            if row and row.value == 1:
+            if row and row.value == 2:
                 print("Database schema is already initialized. Skipping migration checks.")
                 return
         finally:
@@ -481,9 +506,9 @@ def initialize_database():
         try:
             row = db.query(SettingsModel).filter_by(key="schema_version").first()
             if not row:
-                db.add(SettingsModel(key="schema_version", value=1))
+                db.add(SettingsModel(key="schema_version", value=2))
             else:
-                row.value = 1
+                row.value = 2
             db.commit()
         except Exception as e:
             db.rollback()
@@ -2896,11 +2921,26 @@ def api_product(product_id):
         product = db.query(ProductModel).filter_by(id=product_id, is_active=True).first()
         if not product:
             return api_error("Product not found.", 404)
-        # Track view
-        product.views = (product.views or 0) + 1
-        db.add(EventModel(type="view", product_id=product.id,
-                          user_id=user.id if user else None))
-        db.commit()
+        
+        # Track view asynchronously
+        import threading
+        def track_view_async(prod_id, usr_id):
+            with app.app_context():
+                db_local = DBSession()
+                try:
+                    p = db_local.query(ProductModel).filter_by(id=prod_id).first()
+                    if p:
+                        p.views = (p.views or 0) + 1
+                        db_local.add(EventModel(type="view", product_id=p.id, user_id=usr_id))
+                        db_local.commit()
+                except Exception as e:
+                    db_local.rollback()
+                    print(f"Async view tracking failed: {e}")
+                finally:
+                    db_local.close()
+        
+        threading.Thread(target=track_view_async, args=(product.id, user.id if user else None)).start()
+
         reviews = (db.query(ReviewModel)
                      .filter_by(product_id=product.id)
                      .order_by(ReviewModel.created_at.desc())
@@ -3104,25 +3144,35 @@ def api_event():
     if event_type not in {"view", "cart_add", "checkout_open", "payment_selected"}:
         return api_error("Unsupported event type.")
     user = current_user()
-    db = DBSession()
-    try:
-        product_id = data.get("product_id")
-        event = EventModel(
-            type       = event_type,
-            product_id = product_id,
-            user_id    = user.id if user else None,
-            event_metadata = data.get("metadata") or {},
-        )
-        db.add(event)
-        if product_id and event_type == "cart_add":
-            p = db.query(ProductModel).filter_by(id=product_id).first()
-            if p:
-                p.cart_adds  = (p.cart_adds or 0) + 1
-                p.updated_at = now_utc()
-        db.commit()
-        return api_ok({"event": {"id": str_id(event.id), "type": event_type}}, 201)
-    finally:
-        db.close()
+    product_id = data.get("product_id")
+    event_metadata = data.get("metadata") or {}
+
+    import threading
+    def log_event_async():
+        with app.app_context():
+            db_local = DBSession()
+            try:
+                event = EventModel(
+                    type       = event_type,
+                    product_id = product_id,
+                    user_id    = user.id if user else None,
+                    event_metadata = event_metadata,
+                )
+                db_local.add(event)
+                if product_id and event_type == "cart_add":
+                    p = db_local.query(ProductModel).filter_by(id=product_id).first()
+                    if p:
+                        p.cart_adds  = (p.cart_adds or 0) + 1
+                        p.updated_at = now_utc()
+                db_local.commit()
+            except Exception as e:
+                db_local.rollback()
+                print(f"Async event logging failed: {e}")
+            finally:
+                db_local.close()
+
+    threading.Thread(target=log_event_async).start()
+    return api_ok({"message": "Event logged asynchronously."}, 201)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

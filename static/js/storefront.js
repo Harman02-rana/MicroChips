@@ -25,6 +25,7 @@ const state = {
   currentLocationDetails: null,
   searchIndex: -1,
   pendingAuthAction: null,
+  config: null,
 };
 
 const els = {
@@ -690,28 +691,41 @@ async function showOrdersWithFilter(filterType) {
     showAuth("login", "B2C");
     return;
   }
+
+  let title = "Your Orders";
+  if (filterType === "current") {
+    title = "Current Active Orders";
+  } else if (filterType === "returns") {
+    title = "Initiate Returns (Delivered Items)";
+  } else if (filterType === "refunds") {
+    title = "Refund Status & Cancellations";
+  }
+
+  const list = document.querySelector("#ordersList");
+  const modalTitle = els.ordersModal?.querySelector("h2");
+  if (modalTitle) modalTitle.textContent = title;
+  if (list) {
+    list.innerHTML = `<p class="form-help">Loading matching orders...</p>`;
+  }
+  els.ordersModal?.showModal();
+
   try {
     const data = await api("/api/orders/my");
     let orders = data.orders || [];
     
-    let title = "Your Orders";
     if (filterType === "current") {
       orders = orders.filter(order => !["Delivered", "Cancelled"].includes(order.status));
-      title = "Current Active Orders";
+      if (!orders.length) {
+        // Safe check
+      }
     } else if (filterType === "returns") {
       orders = orders.filter(order => order.status === "Delivered");
-      title = "Initiate Returns (Delivered Items)";
       if (!orders.length) {
         toast("No eligible delivered orders found for returns.");
       }
     } else if (filterType === "refunds") {
       orders = orders.filter(order => order.payment_status === "Refunded" || order.status === "Cancelled");
-      title = "Refund Status & Cancellations";
     }
-    
-    const list = document.querySelector("#ordersList");
-    const modalTitle = els.ordersModal?.querySelector("h2");
-    if (modalTitle) modalTitle.textContent = title;
     
     if (list) {
       list.innerHTML = orders.length ? orders.map(order => `
@@ -746,10 +760,11 @@ async function showOrdersWithFilter(filterType) {
         </article>
       `).join("") : `<p class="form-help">No matching orders found under this filter.</p>`;
     }
-    
-    els.ordersModal?.showModal();
   } catch (error) {
     toast(error.message);
+    if (list) {
+      list.innerHTML = `<p class="form-help">Failed to load orders.</p>`;
+    }
   }
 }
 
@@ -810,6 +825,15 @@ function renderCategories() {
   `).join("");
 }
 
+function renderSidebarCategories() {
+  const sidebarCategoryList = document.querySelector("#sidebarCategoryList");
+  if (sidebarCategoryList) {
+    sidebarCategoryList.innerHTML = catalogCategories().map(cat => `
+      <button type="button" class="sidebar-link ${cat === state.category ? "active" : ""}" data-sidebar-cat="${cat}">${cat}</button>
+    `).join("");
+  }
+}
+
 function renderProducts() {
   const products = visibleProducts();
   if (els.heroProductCount) els.heroProductCount.textContent = state.products.length;
@@ -864,9 +888,12 @@ function renderProducts() {
 async function loadProducts() {
   const [productsData, config] = await Promise.all([
     api("/api/products"),
-    api("/api/config")
+    state.config ? Promise.resolve(state.config) : api("/api/config")
   ]);
   state.products = productsData.products;
+  if (!state.config) {
+    state.config = config;
+  }
   if (config.settings?.store_name) {
     document.querySelector("#storeName").innerHTML = brandMarkup(config.settings.store_name);
   }
@@ -875,6 +902,7 @@ async function loadProducts() {
     if (announcement) announcement.textContent = config.settings.announcement;
   }
   renderCategories();
+  renderSidebarCategories();
   renderPopularHero();
   renderSearchSuggestions();
   renderProducts();
@@ -1655,9 +1683,10 @@ function checkoutItemsFromCart() {
 }
 
 async function showProduct(productId) {
+  const product = state.products.find(item => item.id === productId);
+  if (!product) return;
+
   try {
-    const data = await api(`/api/products/${productId}`);
-    const product = data.product;
     const specs = Object.entries(product.specs || {});
     els.productModal.innerHTML = `
       <form method="dialog" class="modal-close-row"><button class="icon-btn" aria-label="Close">&times;</button></form>
@@ -1697,18 +1726,14 @@ async function showProduct(productId) {
             </div>
             <button class="secondary-btn" type="submit">Submit review</button>
           </form>
-          <div class="review-list">
-            ${(data.reviews || []).map(review => `
-              <article class="review">
-                <strong>${escapeHtml(review.name || "Customer")} &middot; ${Array.from({ length: review.rating }, () => "&#9733;").join("")}</strong>
-                <p>${escapeHtml(review.comment || "Rated this product")}</p>
-              </article>
-            `).join("") || `<p class="form-help">No reviews yet.</p>`}
+          <div class="review-list" id="modalReviewList">
+            <p class="form-help">Loading reviews...</p>
           </div>
         </div>
       </div>
     `;
     els.productModal.showModal();
+
     document.querySelector("#reviewForm").addEventListener("submit", async event => {
       event.preventDefault();
       if (!state.currentUser) {
@@ -1729,6 +1754,26 @@ async function showProduct(productId) {
         toast(error.message);
       }
     });
+
+    // Load reviews asynchronously
+    api(`/api/products/${productId}`).then(data => {
+      const reviewList = document.querySelector("#modalReviewList");
+      if (reviewList) {
+        reviewList.innerHTML = (data.reviews || []).map(review => `
+          <article class="review">
+            <strong>${escapeHtml(review.name || "Customer")} &middot; ${Array.from({ length: review.rating }, () => "&#9733;").join("")}</strong>
+            <p>${escapeHtml(review.comment || "Rated this product")}</p>
+          </article>
+        `).join("") || `<p class="form-help">No reviews yet.</p>`;
+      }
+    }).catch(error => {
+      console.warn("Async reviews load failed:", error);
+      const reviewList = document.querySelector("#modalReviewList");
+      if (reviewList) {
+        reviewList.innerHTML = `<p class="form-help">Could not load reviews.</p>`;
+      }
+    });
+
   } catch (error) {
     toast(error.message);
   }
@@ -2130,7 +2175,7 @@ async function checkout() {
     showAuth("login", "B2C");
     return;
   }
-  await api("/api/events", { method: "POST", body: JSON.stringify({ type: "checkout_open" }) }).catch(() => {});
+  api("/api/events", { method: "POST", body: JSON.stringify({ type: "checkout_open" }) }).catch(() => {});
   const form = document.querySelector("#checkoutForm");
   form.name.value = user.name || "";
   form.email.value = user.email || "";
@@ -2168,7 +2213,7 @@ function bindCheckout() {
         showAuth("login", "B2C");
         return;
       }
-      await api("/api/events", {
+      api("/api/events", {
         method: "POST",
         body: JSON.stringify({ type: "payment_selected", metadata: { payment_method: paymentMethod } })
       }).catch(() => {});
@@ -2220,40 +2265,50 @@ async function showOrders() {
     showAuth("login", "B2C");
     return;
   }
+
+  const list = document.querySelector("#ordersList");
+  const modalTitle = els.ordersModal?.querySelector("h2");
+  if (modalTitle) modalTitle.textContent = "Your orders";
+  if (list) {
+    list.innerHTML = `<p class="form-help">Loading your orders...</p>`;
+  }
+  els.ordersModal.showModal();
+
   try {
     const data = await api("/api/orders/my");
-    const list = document.querySelector("#ordersList");
-    const modalTitle = els.ordersModal?.querySelector("h2");
-    if (modalTitle) modalTitle.textContent = "Your orders";
-    list.innerHTML = data.orders.length ? data.orders.map(order => `
-      <article class="order-card">
-        <header>
-          <strong>${escapeHtml(order.invoice_number)}</strong>
-          <span class="pill">${escapeHtml(order.status)}</span>
-        </header>
-        ${order.business?.order_type === "B2B" ? `<p class="order-business">${escapeHtml(order.business.company_name || "Business order")}${order.business.gstin ? ` &middot; GSTIN ${escapeHtml(order.business.gstin)}` : ""}</p>` : ""}
-        <div class="order-items">
-          ${order.items.map(item => `
-            <div class="order-item-row">
-              <span>${escapeHtml(item.name)} x ${item.quantity}</span>
-              <strong>${moneyLabel(item.line_total)}</strong>
-            </div>
-          `).join("")}
-        </div>
-        <div class="order-total-row">
-          <span>${escapeHtml(order.payment_status)}</span>
-          <strong>${moneyLabel(order.totals.total)}</strong>
-        </div>
-        ${order.status === "Pending" ? `
-          <div style="margin-top: 10px; text-align: right;">
-            <button class="secondary-btn cancel-order-btn" style="min-height:30px; font-size:12px; background-color: rgba(239, 68, 68, 0.08); color: var(--danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 4px 12px; cursor: pointer; font-weight: 600;" data-order-id="${order.id}">Cancel Order</button>
+    if (list) {
+      list.innerHTML = data.orders.length ? data.orders.map(order => `
+        <article class="order-card">
+          <header>
+            <strong>${escapeHtml(order.invoice_number)}</strong>
+            <span class="pill">${escapeHtml(order.status)}</span>
+          </header>
+          ${order.business?.order_type === "B2B" ? `<p class="order-business">${escapeHtml(order.business.company_name || "Business order")}${order.business.gstin ? ` &middot; GSTIN ${escapeHtml(order.business.gstin)}` : ""}</p>` : ""}
+          <div class="order-items">
+            ${order.items.map(item => `
+              <div class="order-item-row">
+                <span>${escapeHtml(item.name)} x ${item.quantity}</span>
+                <strong>${moneyLabel(item.line_total)}</strong>
+              </div>
+            `).join("")}
           </div>
-        ` : ""}
-      </article>
-    `).join("") : `<p class="form-help">No orders yet.</p>`;
-    els.ordersModal.showModal();
+          <div class="order-total-row">
+            <span>${escapeHtml(order.payment_status)}</span>
+            <strong>${moneyLabel(order.totals.total)}</strong>
+          </div>
+          ${order.status === "Pending" ? `
+            <div style="margin-top: 10px; text-align: right;">
+              <button class="secondary-btn cancel-order-btn" style="min-height:30px; font-size:12px; background-color: rgba(239, 68, 68, 0.08); color: var(--danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 4px 12px; cursor: pointer; font-weight: 600;" data-order-id="${order.id}">Cancel Order</button>
+            </div>
+          ` : ""}
+        </article>
+      `).join("") : `<p class="form-help">No orders yet.</p>`;
+    }
   } catch (error) {
     toast(error.message);
+    if (list) {
+      list.innerHTML = `<p class="form-help">Failed to load orders.</p>`;
+    }
   }
 }
 
@@ -3090,9 +3145,7 @@ function initHeaderOverrides() {
   
   const sidebarCategoryList = document.querySelector("#sidebarCategoryList");
   if (sidebarCategoryList) {
-    sidebarCategoryList.innerHTML = catalogCategories().map(cat => `
-      <button type="button" class="sidebar-link ${cat === state.category ? "active" : ""}" data-sidebar-cat="${cat}">${cat}</button>
-    `).join("");
+    renderSidebarCategories();
     
     sidebarCategoryList.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-sidebar-cat]");

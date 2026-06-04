@@ -38,6 +38,23 @@ function toast(message) {
   setTimeout(() => el.classList.remove("show"), 2600);
 }
 
+function setFormBusy(form, busy, label) {
+  if (!form) return;
+  form.dataset.busy = busy ? "true" : "false";
+  const submit = form.querySelector("[type='submit']");
+  if (!submit) return;
+  if (busy) {
+    submit.dataset.defaultText = submit.textContent;
+    submit.textContent = label || "Please wait...";
+    submit.disabled = true;
+  } else {
+    if (submit.dataset.defaultText) {
+      submit.textContent = submit.dataset.defaultText;
+    }
+    submit.disabled = false;
+  }
+}
+
 async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const res = await fetch(path, {
@@ -89,6 +106,21 @@ function setPanel(name) {
   document.querySelectorAll(".panel").forEach(panel => panel.classList.remove("active"));
   $(`#${name}Panel`).classList.add("active");
   $("#panelTitle").textContent = name[0].toUpperCase() + name.slice(1);
+
+  // Lazily load data for the active panel (instant cached render + background fresh fetch)
+  if (name === "summary") {
+    loadSummary().catch(err => toast(err.message));
+  } else if (name === "products") {
+    loadProducts().catch(err => toast(err.message));
+  } else if (name === "orders") {
+    loadOrders().catch(err => toast(err.message));
+  } else if (name === "businesses") {
+    loadBusinesses().catch(err => toast(err.message));
+  } else if (name === "analytics") {
+    loadAnalytics().catch(err => toast(err.message));
+  } else if (name === "settings") {
+    loadSettings().catch(err => toast(err.message));
+  }
 }
 
 function bindNavigation() {
@@ -307,49 +339,71 @@ function renderSettings() {
   });
 }
 
-async function loadSummary() {
+async function loadSummary(forceRefresh = false) {
+  if (adminState.summary && !forceRefresh) {
+    renderSummary();
+  }
   const data = await api("/api/admin/summary");
   adminState.summary = data;
+  renderSummary();
 }
 
-async function loadProducts() {
+async function loadProducts(forceRefresh = false) {
+  if (adminState.products.length && !forceRefresh) {
+    renderProducts();
+  }
   const data = await api("/api/admin/products");
   adminState.products = data.products;
   adminState.nextImage = data.next_image;
   renderProducts();
 }
 
-async function loadOrders() {
+async function loadOrders(forceRefresh = false) {
+  if (adminState.orders.length && !forceRefresh) {
+    renderOrders();
+    renderUsers();
+  }
   const data = await api("/api/admin/orders");
   adminState.orders = data.orders;
   renderOrders();
   renderUsers();
 }
 
-async function loadBusinesses() {
+async function loadBusinesses(forceRefresh = false) {
+  if (adminState.businesses.length && !forceRefresh) {
+    renderBusinesses();
+  }
   try {
     const data = await api("/api/admin/businesses");
     adminState.businesses = data.businesses;
-    adminState.businessFilter = "all";
     renderBusinesses();
   } catch (e) {
     // Graceful fail if endpoint doesn't exist
   }
 }
 
-async function loadUsers() {
+async function loadUsers(forceRefresh = false) {
+  if (adminState.users.length && !forceRefresh) {
+    renderUsers();
+  }
   const data = await api("/api/admin/users");
   adminState.users = data.users;
   renderUsers();
 }
 
-async function loadAnalytics() {
+async function loadAnalytics(forceRefresh = false) {
+  if (adminState.analytics && !forceRefresh) {
+    renderAnalytics();
+  }
   const data = await api("/api/admin/analytics");
   adminState.analytics = data.analytics;
   renderAnalytics();
 }
 
-async function loadSettings() {
+async function loadSettings(forceRefresh = false) {
+  if (adminState.settings && !forceRefresh) {
+    renderSettings();
+  }
   const data = await api("/api/admin/settings");
   adminState.settings = data.settings;
   renderSettings();
@@ -357,12 +411,12 @@ async function loadSettings() {
 
 async function refreshAll() {
   const results = await Promise.allSettled([
-    loadSummary(),
-    loadProducts(),
-    loadOrders(),
-    loadBusinesses(),
-    loadAnalytics(),
-    loadSettings()
+    loadSummary(true),
+    loadProducts(true),
+    loadOrders(true),
+    loadBusinesses(true),
+    loadAnalytics(true),
+    loadSettings(true)
   ]);
   renderSummary();
   renderUsers();
@@ -433,6 +487,8 @@ function bindProductForm() {
   $("#productForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Adding...");
     const formData = new FormData(form);
     try {
       const data = await api("/api/admin/products", {
@@ -441,11 +497,13 @@ function bindProductForm() {
       });
       form.reset();
       adminState.nextImage = data.next_image;
-      await Promise.all([loadProducts(), loadSummary(), loadAnalytics()]);
+      await Promise.all([loadProducts(true), loadSummary(true), loadAnalytics(true)]);
       renderSummary();
       toast("Product added");
     } catch (error) {
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 
@@ -511,6 +569,8 @@ function bindEditProduct() {
   $("#editProductForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Saving...");
     const body = Object.fromEntries(new FormData(form).entries());
     body.active = form.active.checked;
     const id = body.id;
@@ -521,11 +581,13 @@ function bindEditProduct() {
         body: JSON.stringify(body)
       });
       $("#editProductModal").close();
-      await Promise.all([loadProducts(), loadAnalytics()]);
+      await Promise.all([loadProducts(true), loadAnalytics(true)]);
       renderSummary();
       toast("Product saved");
     } catch (error) {
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 }
@@ -584,16 +646,24 @@ function bindOrders() {
     businessesTable.addEventListener("click", async event => {
       const button = event.target.closest("[data-business-status]");
       if (!button) return;
+      if (button.disabled) return;
       const status = button.dataset.status;
+      const actionButtons = button.closest(".order-actions")?.querySelectorAll("button") || [];
+      actionButtons.forEach(item => item.disabled = true);
+      const originalText = button.textContent;
+      button.textContent = status === "Approved" ? "Approving..." : "Rejecting...";
       try {
         await api(`/api/admin/businesses/${button.dataset.businessStatus}`, {
           method: "PATCH",
           body: JSON.stringify({ status })
         });
-        await loadBusinesses();
+        await loadBusinesses(true);
         toast(`Business ${status.toLowerCase()}`);
       } catch (error) {
         toast(error.message);
+      } finally {
+        actionButtons.forEach(item => item.disabled = false);
+        button.textContent = originalText;
       }
     });
   }
@@ -602,7 +672,10 @@ function bindOrders() {
 function bindSettings() {
   $("#settingsForm").addEventListener("submit", async event => {
     event.preventDefault();
-    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const form = event.currentTarget;
+    if (form.dataset.busy === "true") return;
+    setFormBusy(form, true, "Saving...");
+    const body = Object.fromEntries(new FormData(form).entries());
     try {
       const data = await api("/api/admin/settings", {
         method: "PUT",
@@ -613,6 +686,8 @@ function bindSettings() {
       toast("Settings saved");
     } catch (error) {
       toast(error.message);
+    } finally {
+      setFormBusy(form, false);
     }
   });
 }
