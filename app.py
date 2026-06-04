@@ -481,20 +481,6 @@ def ensure_sqlite_schema():
 
 def initialize_database():
     global engine, DBSession, DATABASE_LABEL
-    
-    # Try to check if database is already initialized
-    try:
-        db = DBSession()
-        try:
-            row = db.query(SettingsModel).filter_by(key="schema_version").first()
-            if row and row.value == 2:
-                print("Database schema is already initialized. Skipping migration checks.")
-                return
-        finally:
-            db.close()
-    except Exception:
-        # Settings table or database doesn't exist yet, run standard initialization
-        pass
 
     try:
         Base.metadata.create_all(engine)
@@ -2367,7 +2353,7 @@ def api_verify_email_otp():
         }, 201)
     except Exception as exc:
         db.rollback()
-        print(f"LOCAL USER SETUP EXCEPTION AFTER AUTH SUCCESS: {exc}")
+        print(f"LOCAL USER SETUP EXCEPTION AFTER AUTH SUCCESS ({type(exc).__name__}): {exc}")
         if isinstance(exc, IntegrityError):
             error_text = str(getattr(exc, "orig", exc)).lower()
             if "phone" in error_text:
