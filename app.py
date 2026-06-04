@@ -2909,6 +2909,9 @@ def api_change_password():
 @app.delete("/api/auth/me")
 def api_delete_me():
     user = require_user()
+    if getattr(user, "is_admin", False):
+        return api_error("Admin and owner accounts cannot be deleted.", 403)
+
     data = request.get_json(silent=True) or {}
     password = data.get("password") or ""
     confirm = (data.get("confirm") or "").strip()
@@ -2929,17 +2932,40 @@ def api_delete_me():
 
     db = DBSession()
     try:
+        # Nullify user_id references in other tables to avoid foreign key constraint violations
+        db.query(OrderModel).filter(OrderModel.user_id == user.id).update({OrderModel.user_id: None}, synchronize_session=False)
+        db.query(ReviewModel).filter(ReviewModel.user_id == user.id).update({ReviewModel.user_id: None}, synchronize_session=False)
+        db.query(EventModel).filter(EventModel.user_id == user.id).update({EventModel.user_id: None}, synchronize_session=False)
+        db.query(CommunityPostModel).filter(CommunityPostModel.user_id == user.id).update({CommunityPostModel.user_id: None}, synchronize_session=False)
+        db.query(CommunityReplyModel).filter(CommunityReplyModel.user_id == user.id).update({CommunityReplyModel.user_id: None}, synchronize_session=False)
+
+        # Delete corresponding business profile if it exists
+        db.query(BusinessProfileModel).filter(BusinessProfileModel.id == user.id).delete(synchronize_session=False)
+
+        # Delete the user from the users table
         row = db.query(UserModel).filter_by(id=user.id).first()
         if row:
             db.delete(row)
             db.commit()
 
-        if not user.password_hash and supabase:
-            if not supabase_delete_auth_user(user.id):
-                print(f"Failed to delete user {user.id} from Supabase Auth")
+        # Delete the user from Supabase Auth if linked
+        auth_id = getattr(user, "auth_user_id", None) or user.id
+        if auth_id and supabase:
+            if not supabase_delete_auth_user(auth_id):
+                print(f"Failed to delete user {auth_id} from Supabase Auth")
 
+        # Clear all session variables
         session.pop("user_id", None)
+        session.pop("admin_logged_in", None)
+        session.pop("admin_role", None)
+        session.pop("owner_logged_in", None)
+        session.pop("owner_auth_version", None)
+
         return api_ok({"message": "Account deleted."})
+    except Exception as exc:
+        db.rollback()
+        print(f"Failed to delete account: {exc}")
+        return api_error("Could not delete account. Please try again.", 500)
     finally:
         db.close()
 

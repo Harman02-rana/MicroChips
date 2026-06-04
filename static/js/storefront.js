@@ -2432,6 +2432,9 @@ function bindSettings() {
   });
   els.deleteAccountForm?.addEventListener("submit", async event => {
     event.preventDefault();
+    if (!confirm("Are you sure you want to permanently delete your account? This action cannot be undone and all your profile settings will be lost.")) {
+      return;
+    }
     const body = Object.fromEntries(new FormData(event.currentTarget).entries());
     try {
       await api("/api/auth/me", {
@@ -2445,12 +2448,12 @@ function bindSettings() {
       localStorage.removeItem("mc_auth_token");
       localStorage.removeItem("mc_cart");
       localStorage.removeItem("mc_wishlist");
+      localStorage.removeItem("mc_email_otp");
       els.settingsModal.close();
-      await loadMe();
-      renderCart();
-      renderWishlistCount();
-      renderProducts();
-      toast("Account deleted");
+      toast("Account deleted successfully.");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1500);
     } catch (error) {
       toast(error.message);
     }
