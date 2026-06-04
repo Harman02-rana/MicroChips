@@ -1943,8 +1943,7 @@ function bindAuth() {
   const signupForm = document.querySelector("#signupForm");
   const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
 
-  const referralToggleBtn = document.querySelector("#referralToggleBtn");
-  const referralCodeField = document.querySelector("#referralCodeField");
+
   const emailOtpLength = 6;
   const signupEmailInput = signupForm?.querySelector("[name='email']");
   const emailOtpInput = signupForm?.querySelector("[name='otp']");
@@ -1972,11 +1971,7 @@ function bindAuth() {
 
 
 
-  referralToggleBtn?.addEventListener("click", () => {
-    const isHidden = referralCodeField?.classList.toggle("hidden");
-    referralToggleBtn.setAttribute("aria-expanded", isHidden ? "false" : "true");
-    if (!isHidden) referralCodeField?.querySelector("input")?.focus();
-  });
+
 
   sendEmailOtpBtn?.addEventListener("click", async () => {
     if (sendEmailOtpBtn.disabled) return;
