@@ -2012,6 +2012,7 @@ function bindAuth() {
 
   const signupForm = document.querySelector("#signupForm");
   const sendEmailOtpBtn = document.querySelector("#sendEmailOtpBtn");
+  const emailOtpHelp = document.querySelector("#emailOtpHelp");
 
 
   const emailOtpLength = 6;
@@ -2023,19 +2024,22 @@ function bindAuth() {
   const startEmailOtpCooldown = seconds => {
     if (!sendEmailOtpBtn) return;
     clearInterval(emailOtpCooldownTimer);
-    const defaultLabel = "Send Email OTP";
     let remaining = Math.max(1, Number(seconds) || 60);
     sendEmailOtpBtn.disabled = true;
-    sendEmailOtpBtn.textContent = "OTP sent";
+    sendEmailOtpBtn.textContent = `Resend OTP in ${remaining}s`;
+    if (emailOtpHelp) emailOtpHelp.textContent = `You can resend the OTP in ${remaining} seconds.`;
     emailOtpCooldownTimer = setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
         clearInterval(emailOtpCooldownTimer);
         emailOtpCooldownTimer = null;
         sendEmailOtpBtn.disabled = false;
-        sendEmailOtpBtn.textContent = defaultLabel;
+        sendEmailOtpBtn.textContent = "Resend Email OTP";
+        if (emailOtpHelp) emailOtpHelp.textContent = "Did not get the code? Use Resend Email OTP.";
         return;
       }
+      sendEmailOtpBtn.textContent = `Resend OTP in ${remaining}s`;
+      if (emailOtpHelp) emailOtpHelp.textContent = `You can resend the OTP in ${remaining} seconds.`;
     }, 1000);
   };
 

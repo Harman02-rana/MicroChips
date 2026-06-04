@@ -2214,14 +2214,24 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     if account_type == "B2B":
         business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
         if not business:
-            business = BusinessProfileModel(id=user.id)
+            business = BusinessProfileModel(
+                id=user.id,
+                business_name=data.get("company_name") or full_name,
+                business_address=data.get("business_address") or "",
+                contact_number=phone or "",
+                gst_number=data.get("gstin") or "",
+                approval_status="Pending",
+                created_at=now_utc(),
+                updated_at=now_utc(),
+            )
             db.add(business)
-        business.business_name = data.get("company_name")
+        business.business_name = data.get("company_name") or full_name
         business.business_address = data.get("business_address") or ""
         business.contact_number = phone or ""
         business.gst_number = data.get("gstin") or ""
         business.approval_status = "Pending"
         business.updated_at = now_utc()
+        db.flush()
 
     return user, None
 
@@ -2338,6 +2348,10 @@ def api_verify_email_otp():
                 return api_error("This phone number is already registered.", 400)
             if "email" in error_text:
                 return api_error("This email already has an account.", 400)
+            if "business_profiles" in error_text or "business profile" in error_text:
+                return api_error("Business profile could not be saved. Please check your company details and try again.", 400)
+            if "not-null" in error_text or "not null" in error_text:
+                return api_error("Please complete all required signup fields.", 400)
         return api_error("Account could not be created. Please try again.", 500)
     finally:
         db.close()
