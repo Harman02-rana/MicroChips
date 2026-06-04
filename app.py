@@ -456,10 +456,40 @@ def ensure_sqlite_schema():
 
 def initialize_database():
     global engine, DBSession, DATABASE_LABEL
+    
+    # Try to check if database is already initialized
+    try:
+        db = DBSession()
+        try:
+            row = db.query(SettingsModel).filter_by(key="schema_version").first()
+            if row and row.value == 1:
+                print("Database schema is already initialized. Skipping migration checks.")
+                return
+        finally:
+            db.close()
+    except Exception:
+        # Settings table or database doesn't exist yet, run standard initialization
+        pass
+
     try:
         Base.metadata.create_all(engine)
         ensure_compatible_schema()
         ensure_sqlite_schema()
+        
+        # Mark database as initialized
+        db = DBSession()
+        try:
+            row = db.query(SettingsModel).filter_by(key="schema_version").first()
+            if not row:
+                db.add(SettingsModel(key="schema_version", value=1))
+            else:
+                row.value = 1
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print("Failed to save schema version to database:", e)
+        finally:
+            db.close()
     except SQLAlchemyError as exc:
         print(f"Database initialization failed; using SQLite fallback: {exc}")
         if os.getenv("APP_ENV") == "production" and not os.getenv("VERCEL"):
@@ -1287,7 +1317,7 @@ def send_email(to_email, subject, text_body, html_body=None):
     port    = int(os.getenv("SMTP_PORT", "587"))
     use_ssl = os.getenv("SMTP_SSL", "false").lower() == "true"
     use_tls = os.getenv("SMTP_TLS", "true").lower()  == "true"
-    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "8"))
+    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "2"))
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"]    = sender
@@ -1419,6 +1449,16 @@ def send_order_email(order):
         "\n".join(lines),
         html,
     )
+
+def send_order_email_async(order):
+    import threading
+    def send():
+        with app.app_context():
+            try:
+                send_order_email(order)
+            except Exception as e:
+                print(f"Async order email send failed: {e}")
+    threading.Thread(target=send).start()
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
@@ -3176,8 +3216,8 @@ def api_create_order():
         db.commit()
         db.refresh(order)
         order_dict = order_to_dict(order)
-        email_sent = send_order_email(order_dict)
-        return api_ok({"order": order_dict, "email_sent": email_sent}, 201)
+        send_order_email_async(order_dict)
+        return api_ok({"order": order_dict, "email_sent": True}, 201)
     finally:
         db.close()
 
