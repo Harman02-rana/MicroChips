@@ -1378,7 +1378,7 @@ function updateAuthUi() {
   if (loggedIn) {
     const name = state.currentUser.name || "User";
     const isBusinessUser = (state.currentUser.account_type || "B2C") === "B2B";
-    const isApprovedBusiness = isBusinessUser && (state.currentUser.approval_status === "Approved");
+    const isApprovedBusiness = isBusinessUser;
     if (document.querySelector("#profileNameLabel")) {
       document.querySelector("#profileNameLabel").textContent = name;
     }
@@ -2085,14 +2085,6 @@ function bindAuth() {
     try {
       const body = Object.fromEntries(new FormData(form).entries());
       body.account_type = state.authMode;
-      const hasBusinessDetails = Boolean(
-        String(body.company_name || "").trim() ||
-        String(body.gstin || "").trim() ||
-        String(body.business_address || "").trim()
-      );
-      if (body.account_type === "B2B" && !hasBusinessDetails) {
-        body.account_type = "B2C";
-      }
       const visibleEmail = String(body.email || "").trim();
       const otpEmail = String(body.otp_email || "").trim();
       if (otpEmail && otpEmail !== visibleEmail) {
@@ -2117,10 +2109,24 @@ function bindAuth() {
         method: "POST",
         body: JSON.stringify(body)
       });
-      toast(data.message || "Account created. Please login.");
+      toast(data.message || "Account created successfully.");
       localStorage.removeItem("mc_email_otp");
       form?.reset?.();
-      showAuth("login", state.authMode);
+
+      if (data.auth_token && data.user) {
+        state.currentUser = data.user;
+        state.authToken = data.auth_token;
+        localStorage.setItem("mc_auth_token", data.auth_token);
+        updateAuthUi();
+        els.authModal.close();
+        const redirectUrl = data.redirect_url || authDestination();
+        if (redirectUrl && redirectUrl !== "/" && redirectUrl !== window.location.pathname) {
+          window.location.assign(redirectUrl);
+          return;
+        }
+      } else {
+        showAuth("login", state.authMode);
+      }
     } catch (error) {
       toast(error.message);
     } finally {

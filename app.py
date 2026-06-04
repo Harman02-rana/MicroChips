@@ -1146,7 +1146,7 @@ def auth_redirect_url(user):
     if is_admin:
         return "/admin"
     if account_type == "B2B":
-        return "/admin" if approval_status == "Approved" else "/?pending_approval=1"
+        return "/admin"
     return "/"
 
 def product_to_dict(p: ProductModel) -> dict:
@@ -1826,6 +1826,8 @@ def api_google_oauth_session():
 
 @app.get("/admin")
 def admin_page():
+    if session.get("user_id") and not session.get("admin_logged_in"):
+        return redirect("/")
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login_page"))
     is_owner_admin = session.get("admin_role") == "owner_admin" or session.get("owner_logged_in")
@@ -1841,14 +1843,6 @@ def admin_page():
                 is_complete = check_and_auto_complete_profile(user, db)
                 if not is_complete:
                     return redirect("/?setup_profile=1")
-                
-                # Check business approval status for B2B users
-                if (user.account_type or "B2C") == "B2B":
-                    business = db.query(BusinessProfileModel).filter_by(id=user.id).first()
-                    if not business or (business.approval_status or "Pending") != "Approved":
-                        session.pop("admin_logged_in", None)
-                        session.pop("admin_role", None)
-                        return redirect("/?pending_approval=1")
         finally:
             db.close()
 
@@ -2115,7 +2109,7 @@ def signup_payload():
     data["full_name"] = (data.get("full_name") or data.get("name") or "").strip()
     data["phone"] = (data.get("phone") or "").strip()
     data["password"] = data.get("password") or ""
-    data["account_type"] = normalize_account_type(data.get("account_type"))
+    data["account_type"] = data.get("account_type")
     data["company_name"] = (data.get("company_name") or "").strip()
     data["gstin"] = (data.get("gstin") or "").strip().upper()
     data["business_address"] = (data.get("business_address") or "").strip()
@@ -2139,6 +2133,11 @@ def validate_signup_payload(data, require_otp=False):
     name = data.get("name") or data.get("full_name")
     if not name or not data.get("email") or not data.get("password"):
         return "Name, email and password are required."
+    account_type = data.get("account_type")
+    if not account_type:
+        return "Account type is required."
+    if account_type not in ("B2C", "B2B"):
+        return "Invalid account type."
     email = normalize_email(data.get("email") or "")
     if not email.endswith("@gmail.com"):
         return "Only Gmail addresses are supported for signup."
@@ -2314,12 +2313,18 @@ def api_verify_email_otp():
             return api_error(user_error, 400)
         db.commit()
         db.refresh(user)
+        session_login_for(user)
         message = (
             "Business account created. Phone/GST verification and admin approval are pending."
             if data["account_type"] == "B2B"
-            else "Email verified. Account created successfully. Please login."
+            else "Email verified. Account created successfully."
         )
-        return api_ok({"message": message, "user": public_user(user)}, 201)
+        return api_ok({
+            "message": message,
+            "user": public_user(user),
+            "auth_token": make_auth_token(user),
+            "redirect_url": auth_redirect_url(user)
+        }, 201)
     except Exception as exc:
         db.rollback()
         print(f"LOCAL USER SETUP EXCEPTION AFTER AUTH SUCCESS: {exc}")
