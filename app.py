@@ -2237,6 +2237,24 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
 
     return user, None
 
+def signup_user_response(user, approval_status="Approved"):
+    return {
+        "id": str_id(user.id),
+        "name": user.name or "",
+        "full_name": user.full_name or user.name or "",
+        "email": user.email,
+        "phone": user.phone or "",
+        "account_type": user.account_type or "B2C",
+        "role": user.role or ("business" if user.account_type == "B2B" else "customer"),
+        "company_name": user.company_name or "",
+        "gstin": user.gstin or "",
+        "is_admin": bool(user.is_admin),
+        "created_at": user.created_at.isoformat() if user.created_at else "",
+        "profile_completed": bool(getattr(user, "profile_completed", False)),
+        "auth_provider": "email",
+        "approval_status": approval_status,
+    }
+
 @app.post("/api/auth/send-email-otp")
 def api_send_email_otp():
     data = request.get_json(silent=True) or {}
@@ -2327,8 +2345,12 @@ def api_verify_email_otp():
                 })
             db.rollback()
             return api_error(user_error, 400)
+        user_payload = signup_user_response(
+            user,
+            "Pending" if data["account_type"] == "B2B" else "Approved",
+        )
+        redirect_url = "/?setup_profile=1" if not user_payload["profile_completed"] else ("/admin" if data["account_type"] == "B2B" else "/")
         db.commit()
-        db.refresh(user)
         session_login_for(user)
         message = (
             "Business account created. Phone/GST verification and admin approval are pending."
@@ -2337,9 +2359,9 @@ def api_verify_email_otp():
         )
         return api_ok({
             "message": message,
-            "user": public_user(user),
+            "user": user_payload,
             "auth_token": make_auth_token(user),
-            "redirect_url": auth_redirect_url(user)
+            "redirect_url": redirect_url
         }, 201)
     except Exception as exc:
         db.rollback()
@@ -2354,6 +2376,8 @@ def api_verify_email_otp():
                 return api_error("Business profile could not be saved. Please check your company details and try again.", 400)
             if "not-null" in error_text or "not null" in error_text:
                 return api_error("Please complete all required signup fields.", 400)
+        if isinstance(exc, SQLAlchemyError):
+            return api_error("Account could not be created. Please check your signup details and try again.", 400)
         return api_error("Account could not be created. Please try again.", 500)
     finally:
         db.close()
