@@ -738,6 +738,11 @@ async function showOrdersWithFilter(filterType) {
               <button class="secondary-btn" style="min-height:30px; font-size:12px;" onclick="toast('Return request submitted for ${escapeHtml(order.invoice_number)}. Our team will verify and approve within 24 hours.')">Request Return</button>
             </div>
           ` : ""}
+          ${order.status === "Pending" ? `
+            <div style="margin-top: 10px; text-align: right;">
+              <button class="secondary-btn cancel-order-btn" style="min-height:30px; font-size:12px; background-color: rgba(239, 68, 68, 0.08); color: var(--danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 4px 12px; cursor: pointer; font-weight: 600;" data-order-id="${order.id}">Cancel Order</button>
+            </div>
+          ` : ""}
         </article>
       `).join("") : `<p class="form-help">No matching orders found under this filter.</p>`;
     }
@@ -2239,6 +2244,11 @@ async function showOrders() {
           <span>${escapeHtml(order.payment_status)}</span>
           <strong>${moneyLabel(order.totals.total)}</strong>
         </div>
+        ${order.status === "Pending" ? `
+          <div style="margin-top: 10px; text-align: right;">
+            <button class="secondary-btn cancel-order-btn" style="min-height:30px; font-size:12px; background-color: rgba(239, 68, 68, 0.08); color: var(--danger, #ef4444); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 4px 12px; cursor: pointer; font-weight: 600;" data-order-id="${order.id}">Cancel Order</button>
+          </div>
+        ` : ""}
       </article>
     `).join("") : `<p class="form-help">No orders yet.</p>`;
     els.ordersModal.showModal();
@@ -2806,6 +2816,34 @@ function bindEvents() {
   });
   document.querySelectorAll("[data-help-topic]").forEach(button => {
     button.addEventListener("click", () => showHelpTopic(button.dataset.helpTopic));
+  });
+
+  document.querySelector("#ordersList")?.addEventListener("click", async event => {
+    const cancelBtn = event.target.closest(".cancel-order-btn");
+    if (!cancelBtn) return;
+    const orderId = cancelBtn.dataset.orderId;
+    if (!orderId) return;
+    if (!confirm("Are you sure you want to cancel this order?")) return;
+    
+    cancelBtn.disabled = true;
+    const originalText = cancelBtn.textContent;
+    cancelBtn.textContent = "Cancelling...";
+    try {
+      const data = await api(`/api/orders/${orderId}/cancel`, {
+        method: "POST"
+      });
+      toast(data.message || "Order cancelled successfully.");
+      const modalTitle = els.ordersModal?.querySelector("h2")?.textContent || "";
+      if (modalTitle.toLowerCase().includes("current") || modalTitle.toLowerCase().includes("active")) {
+        await showOrdersWithFilter("current");
+      } else {
+        await showOrders();
+      }
+    } catch (error) {
+      toast(error.message);
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = originalText;
+    }
   });
 
   document.querySelector(".marketplace-category-strip")?.addEventListener("click", event => {

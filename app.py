@@ -3236,6 +3236,26 @@ def api_my_orders():
         db.close()
 
 
+@app.post("/api/orders/<order_id>/cancel")
+def api_cancel_order(order_id):
+    user = require_user()
+    db = DBSession()
+    try:
+        order = db.query(OrderModel).filter_by(id=order_id, user_id=user.id).first()
+        if not order:
+            return api_error("Order not found.", 404)
+        if order.status != "Pending":
+            return api_error("Only pending orders can be cancelled.", 400)
+        
+        order.status = "Cancelled"
+        order.updated_at = now_utc()
+        db.commit()
+        db.refresh(order)
+        return api_ok({"order": order_to_dict(order), "message": "Order cancelled successfully."})
+    finally:
+        db.close()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ROUTES — Admin
 # ══════════════════════════════════════════════════════════════════════════════
