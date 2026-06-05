@@ -1763,6 +1763,43 @@ ensure_bootstrap_data()
 # ROUTES — Pages
 # ══════════════════════════════════════════════════════════════════════════════
 
+SEO_BASE_URL = "https://microchipcart.in"
+PUBLIC_SITEMAP_PATHS = ("/", "/products", "/community", "/help")
+ROBOTS_TXT = f"""User-agent: *
+Allow: /
+Sitemap: {SEO_BASE_URL}/sitemap.xml
+"""
+
+
+def build_public_sitemap():
+    urls = "\n".join(
+        f"  <url><loc>{SEO_BASE_URL}{path}</loc></url>"
+        for path in PUBLIC_SITEMAP_PATHS
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{urls}\n"
+        "</urlset>\n"
+    )
+
+
+@app.get("/robots.txt")
+def robots_txt():
+    response = make_response(ROBOTS_TXT)
+    response.mimetype = "text/plain"
+    return response
+
+
+@app.get("/sitemap.xml")
+@app.get("/sitemap-website.xml")
+@app.get("/sitemap-0.xml")
+def public_sitemap():
+    response = make_response(build_public_sitemap())
+    response.mimetype = "application/xml"
+    return response
+
+
 @app.get("/")
 def storefront_page():
     db = DBSession()
