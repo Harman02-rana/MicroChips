@@ -2163,7 +2163,13 @@ def create_or_update_verified_user(db, auth_user, data, store_password=False):
     phone = data.get("phone") or None
     auth_id = auth_user_id(auth_user)
 
-    existing = db.query(UserModel).filter_by(email=email).first()
+    existing = None
+    if auth_id:
+        existing = db.query(UserModel).filter_by(auth_user_id=auth_id).first()
+        if not existing:
+            existing = db.query(UserModel).filter_by(id=auth_id).first()
+    if not existing:
+        existing = db.query(UserModel).filter_by(email=email).first()
     if phone:
         phone_user = db.query(UserModel).filter(UserModel.phone == phone).first()
         if phone_user and (not existing or str_id(phone_user.id) != str_id(existing.id)):
@@ -2319,12 +2325,18 @@ def api_verify_email_otp():
     }
     auth_user = None
     store_password = True
-    if supabase and SUPABASE_AUTH_SYNC_ON_SIGNUP:
+    auth_error = None
+    if supabase:
         auth_user, auth_error = supabase_ensure_verified_auth_user(data["email"], data["password"], metadata)
         if not auth_user:
-            print(f"Supabase auth user setup failed after OTP verification; continuing with local website account: {auth_error}")
-            auth_user = None
-            store_password = True
+            print(f"Supabase admin auth user setup failed after OTP verification: {auth_error}")
+            try:
+                auth_user, auth_error = supabase_signup_recovering_orphan(data["email"], data["password"], data["account_type"])
+            except Exception as signup_exc:
+                auth_user = None
+                auth_error = str(signup_exc)
+            if not auth_user and engine.dialect.name == "postgresql":
+                return signup_error("Account auth setup failed. Please contact support to check Supabase service role settings.")
         else:
             store_password = False
     else:
@@ -2372,6 +2384,9 @@ def api_verify_email_otp():
             if "not-null" in error_text or "not null" in error_text:
                 return signup_error("Please complete all required signup fields.")
         if isinstance(exc, SQLAlchemyError):
+            error_text = str(getattr(exc, "orig", exc)).lower()
+            if "foreign key" in error_text and ("auth" in error_text or "users" in error_text):
+                return signup_error("Account auth setup failed. Please contact support to check Supabase service role settings.")
             return signup_error("Account could not be created. Please check your signup details and try again.")
         return api_error("Account could not be created. Please try again.", 500)
     finally:
