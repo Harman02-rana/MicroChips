@@ -2609,7 +2609,6 @@ def api_login_direct():
     db = DBSession()
     try:
         local_user = db.query(UserModel).filter_by(email=email).first()
-        local_password_failed = False
         if local_user and local_user.password_hash:
             if check_password_hash(local_user.password_hash, password):
                 if not local_user.email_verified and not getattr(local_user, "is_admin", False):
@@ -2622,14 +2621,13 @@ def api_login_direct():
                 db.refresh(local_user)
                 session_login_for(local_user)
                 return api_ok({"user": public_user(local_user), "auth_token": make_auth_token(local_user), "redirect_url": auth_redirect_url(local_user)})
-            if not supabase or not SUPABASE_AUTH_LOGIN_FALLBACK:
-                return api_error("Invalid email or password.", 401)
-            local_password_failed = True
+            return api_error("Invalid email or password.", 401)
 
         should_try_supabase_auth = bool(
             supabase
             and SUPABASE_AUTH_LOGIN_FALLBACK
-            and (not local_user or not local_user.password_hash or local_password_failed)
+            and local_user
+            and not local_user.password_hash
         )
         if not should_try_supabase_auth:
             user = local_user
@@ -2702,7 +2700,7 @@ def api_login_direct():
                 user.role = role
             if not user.account_type:
                 user.account_type = account_type
-            if not user.password_hash or local_password_failed:
+            if not user.password_hash:
                 user.password_hash = generate_password_hash(password)
 
         if not user.email_verified and not getattr(user, "is_admin", False):
