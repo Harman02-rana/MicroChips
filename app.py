@@ -1035,11 +1035,26 @@ def str_id(uid):
     """Convert UUID object to string safely."""
     return str(uid) if uid else None
 
+def mail_env(*names, default=""):
+    for name in names:
+        value = clean_env(os.getenv(name))
+        if value:
+            return value
+    return default
+
+def smtp_config():
+    host = mail_env("SMTP_HOST", "MAIL_SERVER")
+    username = mail_env("SMTP_USERNAME", "MAIL_USERNAME")
+    password = mail_env("SMTP_PASSWORD", "MAIL_PASSWORD")
+    sender = mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=username or ADMIN_NOTIFICATION_EMAIL)
+    port = mail_env("SMTP_PORT", "MAIL_PORT", default="587")
+    use_ssl = mail_env("SMTP_SSL", "MAIL_USE_SSL", default="false").lower() == "true"
+    use_tls = mail_env("SMTP_TLS", "MAIL_USE_TLS", default="true").lower() == "true"
+    timeout = int(mail_env("SMTP_TIMEOUT_SECONDS", default="2"))
+    return host, username, password, sender, port, use_ssl, use_tls, timeout
+
 def smtp_config_status():
-    host = clean_env(os.getenv("SMTP_HOST"))
-    username = clean_env(os.getenv("SMTP_USERNAME"))
-    password = clean_env(os.getenv("SMTP_PASSWORD"))
-    sender = clean_env(os.getenv("SMTP_FROM")) or username or ADMIN_NOTIFICATION_EMAIL
+    host, username, password, sender, *_ = smtp_config()
     missing = []
     if not host:
         missing.append("SMTP_HOST")
@@ -1347,18 +1362,12 @@ def api_error(message, status=400):
 # ── Email (SMTP) ──────────────────────────────────────────────────────────────
 
 def send_email(to_email, subject, text_body, html_body=None):
-    host     = os.getenv("SMTP_HOST")
-    username = os.getenv("SMTP_USERNAME")
-    password = os.getenv("SMTP_PASSWORD")
-    sender   = os.getenv("SMTP_FROM", username or ADMIN_NOTIFICATION_EMAIL)
+    host, username, password, sender, port, use_ssl, use_tls, timeout = smtp_config()
     configured, missing = smtp_config_status()
     if not configured:
         print(f"SMTP not configured ({', '.join(missing)}). Skipping: {subject} -> {to_email}")
         return False
-    port    = int(os.getenv("SMTP_PORT", "587"))
-    use_ssl = os.getenv("SMTP_SSL", "false").lower() == "true"
-    use_tls = os.getenv("SMTP_TLS", "true").lower()  == "true"
-    timeout = int(os.getenv("SMTP_TIMEOUT_SECONDS", "2"))
+    port = int(port)
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"]    = sender
@@ -1935,6 +1944,7 @@ INVALID_EMAIL_OTP_MESSAGE = "Invalid or expired OTP. Please request a new code."
 PASSWORD_RESET_TTL_SECONDS = 15 * 60
 PASSWORD_RESET_LENGTH = 6
 PASSWORD_RESET_GENERIC_MESSAGE = "If an account exists for that email, a reset code has been sent."
+EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 def email_otp_digest(email, otp):
     secret = auth_token_secret()
@@ -2004,7 +2014,7 @@ def send_app_email_otp(email):
 
 def local_email_verification_fallback(email):
     smtp_ok, _ = smtp_config_status()
-    if supabase or smtp_ok:
+    if not env_flag("ALLOW_DEV_OTP_DISPLAY", False) and (supabase or smtp_ok):
         return None
     otp = "000000"
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
@@ -2130,8 +2140,8 @@ def validate_signup_payload(data, require_otp=False):
     if account_type not in ("B2C", "B2B"):
         return "Invalid account type."
     email = normalize_email(data.get("email") or "")
-    if not email.endswith("@gmail.com"):
-        return "Only Gmail addresses are supported for signup."
+    if not re.match(EMAIL_REGEX, email):
+        return "Enter a valid email address."
     if require_otp and not (data.get("otp") or "").strip():
         return "Email OTP is required."
     if require_otp and not re.fullmatch(rf"\d{{{EMAIL_OTP_LENGTH}}}", data.get("otp") or ""):
@@ -2247,9 +2257,9 @@ def api_send_email_otp():
     if not email:
         print("SEND EMAIL OTP ERROR: missing email.")
         return api_error("Email is required.", 400)
-    if not email.endswith("@gmail.com"):
-        print("SEND EMAIL OTP ERROR: non-gmail email.")
-        return api_error("Only Gmail addresses are supported for signup.", 400)
+    if not re.match(EMAIL_REGEX, email):
+        print("SEND EMAIL OTP ERROR: invalid email.")
+        return api_error("Enter a valid email address.", 400)
 
     db = DBSession()
     try:
