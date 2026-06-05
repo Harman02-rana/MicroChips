@@ -29,19 +29,19 @@ Default owner login uses `OWNER_EMAIL` / `OWNER_PASSWORD` when set, otherwise it
 Use the Supabase database host and keep the password in `.env`. Recommended setup:
 
 ```text
-SUPABASE_DB_HOST=db.ybbomppuyrucifdwgmpf.supabase.co
-SUPABASE_DB_PORT=5432
+SUPABASE_DB_HOST=aws-1-ap-south-1.pooler.supabase.com
+SUPABASE_DB_PORT=6543
 SUPABASE_DB_NAME=postgres
-SUPABASE_DB_USER=postgres
+SUPABASE_DB_USER=postgres.ybbomppuyrucifdwgmpf
 SUPABASE_DB_PASSWORD=your-real-supabase-db-password
 ```
 
-The app builds a safe `postgresql://` URL from those fields, URL-encodes the password, and adds `sslmode=require` for Supabase.
+The app uses the Supabase pooler endpoint for IPv4-compatible local and serverless deployments. It builds a safe `postgresql://` URL from those fields, URL-encodes the password, and adds `sslmode=require` for Supabase.
 
 You can also use a full URL:
 
 ```text
-DATABASE_URL=postgresql://postgres:your-url-encoded-password@db.ybbomppuyrucifdwgmpf.supabase.co:5432/postgres?sslmode=require
+DATABASE_URL=postgresql://postgres.ybbomppuyrucifdwgmpf:your-url-encoded-password@aws-1-ap-south-1.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
 Do not leave `[YOUR-PASSWORD]` in `DATABASE_URL`.

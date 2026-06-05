@@ -107,10 +107,10 @@ LOCAL_DATABASE_URL = "sqlite:///" + SQLITE_FALLBACK_PATH.resolve().as_posix()
 def build_database_url():
     raw_url = clean_env(os.getenv("DATABASE_URL"))
     supabase_password = clean_env(os.getenv("SUPABASE_DB_PASSWORD"))
-    supabase_host = clean_env(os.getenv("SUPABASE_DB_HOST")) or "db.ybbomppuyrucifdwgmpf.supabase.co"
-    supabase_user = clean_env(os.getenv("SUPABASE_DB_USER")) or "postgres"
+    supabase_host = clean_env(os.getenv("SUPABASE_DB_HOST")) or "aws-1-ap-south-1.pooler.supabase.com"
+    supabase_user = clean_env(os.getenv("SUPABASE_DB_USER")) or "postgres.ybbomppuyrucifdwgmpf"
     supabase_name = clean_env(os.getenv("SUPABASE_DB_NAME")) or "postgres"
-    supabase_port = clean_env(os.getenv("SUPABASE_DB_PORT")) or "5432"
+    supabase_port = clean_env(os.getenv("SUPABASE_DB_PORT")) or "6543"
 
     if supabase_password:
         database_url = (
