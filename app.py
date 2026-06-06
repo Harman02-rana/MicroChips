@@ -21,7 +21,7 @@ from werkzeug.utils import secure_filename
 # ── dotenv ────────────────────────────────────────────────────────────────────
 try:
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 except Exception:
     pass
 
@@ -1958,6 +1958,17 @@ def api_health():
         db_ok = False
     smtp_ok, smtp_missing = smtp_config_status()
     supabase_configured = bool(clean_env(os.getenv("SUPABASE_DB_HOST")) or clean_env(os.getenv("DATABASE_URL")))
+    supabase_auth_configured = bool(
+        supabase_url
+        and supabase_url not in SUPABASE_PLACEHOLDERS
+        and supabase_key
+        and supabase_key not in SUPABASE_PLACEHOLDERS
+    )
+    supabase_admin_configured = bool(
+        supabase_url
+        and supabase_url not in SUPABASE_PLACEHOLDERS
+        and clean_env(os.getenv("SUPABASE_SERVICE_ROLE_KEY")) not in SUPABASE_PLACEHOLDERS
+    )
     supabase_connected = engine.dialect.name == "postgresql" and db_ok
     return api_ok({
         "status": "ok" if db_ok else "database_error",
@@ -1965,6 +1976,9 @@ def api_health():
         "store_mode": DATABASE_LABEL,
         "supabase_configured": supabase_configured,
         "supabase_connected": supabase_connected,
+        "supabase_auth_configured": supabase_auth_configured,
+        "supabase_auth_connected": bool(supabase),
+        "supabase_admin_configured": supabase_admin_configured,
         "smtp_configured": smtp_ok,
         "smtp_missing": smtp_missing,
         "environment": os.getenv("APP_ENV", "development"),
@@ -2051,7 +2065,12 @@ def send_app_email_otp(email):
 
 def local_email_verification_fallback(email):
     smtp_ok, _ = smtp_config_status()
-    if not env_flag("ALLOW_DEV_OTP_DISPLAY", False) and (supabase or smtp_ok):
+    if (
+        os.getenv("APP_ENV", "development") == "production"
+        or supabase
+        or smtp_ok
+        or not env_flag("ALLOW_DEV_OTP_DISPLAY", False)
+    ):
         return None
     otp = "000000"
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
