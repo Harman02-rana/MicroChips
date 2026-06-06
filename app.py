@@ -10,6 +10,7 @@ import hmac
 import base64
 from datetime import datetime, timezone, timedelta
 from email.message import EmailMessage
+from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from pathlib import Path
 from urllib.parse import quote, urlparse, urlunparse, parse_qsl, urlencode
 
@@ -1368,10 +1369,20 @@ def send_email(to_email, subject, text_body, html_body=None):
         print(f"SMTP not configured ({', '.join(missing)}). Skipping: {subject} -> {to_email}")
         return False
     port = int(port)
+    sender_name, sender_addr = parseaddr(sender)
+    _, recipient_addr = parseaddr(to_email)
+    _, username_addr = parseaddr(username or "")
+    sender_addr = sender_addr or username_addr or sender
+    recipient_addr = recipient_addr or to_email
+    envelope_from = mail_env("SMTP_ENVELOPE_FROM", default=username_addr or sender_addr)
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"]    = sender
-    msg["To"]      = to_email
+    msg["From"]    = formataddr((sender_name or "MicrochipCart", sender_addr))
+    msg["To"]      = recipient_addr
+    msg["Date"]    = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=(sender_addr.split("@", 1)[1] if "@" in sender_addr else None))
+    if username_addr and username_addr.lower() != sender_addr.lower():
+        msg["Reply-To"] = sender_addr
     msg.set_content(text_body)
     if html_body:
         msg.add_alternative(html_body, subtype="html")
@@ -1380,14 +1391,17 @@ def send_email(to_email, subject, text_body, html_body=None):
             with smtplib.SMTP_SSL(host, port, timeout=timeout, context=ssl.create_default_context()) as s:
                 if username and password:
                     s.login(username, password)
-                s.send_message(msg)
+                refused = s.sendmail(envelope_from, [recipient_addr], msg.as_string())
         else:
             with smtplib.SMTP(host, port, timeout=timeout) as s:
                 if use_tls:
                     s.starttls(context=ssl.create_default_context())
                 if username and password:
                     s.login(username, password)
-                s.send_message(msg)
+                refused = s.sendmail(envelope_from, [recipient_addr], msg.as_string())
+        if refused:
+            print(f"SMTP refused recipients: {refused}")
+            return False
         return True
     except Exception as exc:
         print(f"SMTP send failed: {exc}")
@@ -2059,7 +2073,7 @@ def send_app_email_otp(email):
         f"<h2 style=\"letter-spacing:4px;\">{otp}</h2>"
         "<p>This code expires in 10 minutes. Do not share it with anyone.</p>"
     )
-    if not send_email(email, f"Your MicroChip Cart OTP: {otp}", text_body, html_body):
+    if not send_email(email, "Your MicroChip Cart verification code", text_body, html_body):
         return None
     return make_email_otp_token(email, otp, expires_at)
 
