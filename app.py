@@ -556,6 +556,7 @@ PRIVATE_SMTP_SENDERS     = {
     for email in (os.getenv("PRIVATE_SMTP_SENDERS") or "harmanrana709@gmail.com").split(",")
     if email.strip()
 }
+COMPANY_EMAIL_SENDER     = (os.getenv("COMPANY_EMAIL_SENDER") or ADMIN_NOTIFICATION_EMAIL or "mcc_noreply@microchipcart.com").strip().lower()
 
 
 # ── Utility helpers ───────────────────────────────────────────────────────────
@@ -1065,7 +1066,10 @@ def smtp_config():
     host = mail_env("SMTP_HOST", "MAIL_SERVER")
     username = mail_env("SMTP_USERNAME", "MAIL_USERNAME")
     password = mail_env("SMTP_PASSWORD", "MAIL_PASSWORD")
-    sender = mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=ADMIN_NOTIFICATION_EMAIL)
+    sender = mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=COMPANY_EMAIL_SENDER)
+    sender_name_from_header, sender_addr_from_header = parseaddr(sender)
+    if normalize_email(sender_addr_from_header or sender) in PRIVATE_SMTP_SENDERS:
+        sender = formataddr((sender_name_from_header or "MicrochipCart", COMPANY_EMAIL_SENDER))
     sender_name = mail_env("SMTP_FROM_NAME", "MAIL_DEFAULT_SENDER_NAME", default="MicrochipCart")
     port = mail_env("SMTP_PORT", "MAIL_PORT", default="587")
     use_ssl = mail_env("SMTP_SSL", "MAIL_USE_SSL", default="false").lower() == "true"
@@ -1075,7 +1079,9 @@ def smtp_config():
 
 def smtp_sender_address():
     _, username_addr = parseaddr(mail_env("SMTP_USERNAME", "MAIL_USERNAME"))
-    _, sender_addr = parseaddr(mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=ADMIN_NOTIFICATION_EMAIL))
+    _, sender_addr = parseaddr(mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=COMPANY_EMAIL_SENDER))
+    if normalize_email(sender_addr) in PRIVATE_SMTP_SENDERS:
+        sender_addr = COMPANY_EMAIL_SENDER
     return (sender_addr or username_addr or "").strip().lower()
 
 def smtp_uses_private_sender():
@@ -2122,7 +2128,7 @@ def read_supabase_email_otp_token(token):
 
 def send_app_email_otp(email):
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
-    if supabase and env_flag("SUPABASE_EMAIL_OTP_ENABLED", True):
+    if supabase and env_flag("SUPABASE_EMAIL_OTP_ENABLED", False):
         sent, error = send_supabase_email_otp(email)
         if sent:
             return make_supabase_email_otp_token(email, expires_at)
