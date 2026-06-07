@@ -551,6 +551,11 @@ SMTP_PLACEHOLDERS        = {
     "noreply@yourdomain.com",
     "your-16-character-gmail-app-password",
 }
+PRIVATE_SMTP_SENDERS     = {
+    email.strip().lower()
+    for email in (os.getenv("PRIVATE_SMTP_SENDERS") or "harmanrana709@gmail.com").split(",")
+    if email.strip()
+}
 
 
 # ── Utility helpers ───────────────────────────────────────────────────────────
@@ -995,6 +1000,19 @@ def supabase_verify_email_otp(email, otp):
             print(f"SUPABASE OTP VERIFICATION FAILURE ({verify_type}): {exc}")
     return None, "signup", last_error
 
+def send_supabase_email_otp(email):
+    if not supabase:
+        return False, "missing Supabase env vars"
+    try:
+        supabase.auth.sign_in_with_otp({
+            "email": normalize_email(email),
+            "options": {"should_create_user": True},
+        })
+        return True, None
+    except Exception as exc:
+        print(f"SUPABASE OTP SEND FAILURE: {exc}")
+        return False, str(exc)
+
 def supabase_auth_login(email, password):
     if not supabase:
         raise RuntimeError("missing Supabase env vars")
@@ -1055,6 +1073,14 @@ def smtp_config():
     timeout = int(mail_env("SMTP_TIMEOUT_SECONDS", default="2"))
     return host, username, password, sender, sender_name, port, use_ssl, use_tls, timeout
 
+def smtp_sender_address():
+    _, username_addr = parseaddr(mail_env("SMTP_USERNAME", "MAIL_USERNAME"))
+    _, sender_addr = parseaddr(mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=ADMIN_NOTIFICATION_EMAIL))
+    return (sender_addr or username_addr or "").strip().lower()
+
+def smtp_uses_private_sender():
+    return smtp_sender_address() in PRIVATE_SMTP_SENDERS
+
 def smtp_config_status():
     host, username, password, sender, *_ = smtp_config()
     missing = []
@@ -1062,6 +1088,8 @@ def smtp_config_status():
         missing.append("SMTP_HOST")
     if not sender or sender.lower() in SMTP_PLACEHOLDERS:
         missing.append("SMTP_FROM")
+    if smtp_uses_private_sender():
+        missing.append("company SMTP_FROM")
     if username and username.lower() in SMTP_PLACEHOLDERS:
         missing.append("SMTP_USERNAME")
     if username and (not password or password.lower() in SMTP_PLACEHOLDERS):
@@ -2037,6 +2065,17 @@ def make_email_otp_token(email, otp, expires_at):
     }
     return base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
 
+def make_supabase_email_otp_token(email, expires_at):
+    expires_at_text = expires_at.isoformat()
+    email = normalize_email(email)
+    payload = {
+        "email": email,
+        "provider": "supabase",
+        "expires_at": expires_at_text,
+        "sig": email_otp_token_signature(email, "supabase", expires_at_text),
+    }
+    return base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode("utf-8")).decode("ascii")
+
 def read_email_otp_token(token):
     try:
         raw = base64.urlsafe_b64decode(str(token or "").encode("ascii"))
@@ -2059,12 +2098,40 @@ def read_email_otp_token(token):
         return None, "bad_expiry"
     return {"email": email, "digest": digest, "expires_at": expires_at}, None
 
+def read_supabase_email_otp_token(token):
+    try:
+        raw = base64.urlsafe_b64decode(str(token or "").encode("ascii"))
+        payload = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None, "bad_token"
+
+    email = normalize_email(payload.get("email"))
+    provider = payload.get("provider")
+    expires_at_text = payload.get("expires_at")
+    sig = payload.get("sig")
+    if provider != "supabase" or not email or not expires_at_text or not sig:
+        return None, "bad_token"
+    expected_sig = email_otp_token_signature(email, "supabase", expires_at_text)
+    if not hmac.compare_digest(sig, expected_sig):
+        return None, "bad_signature"
+    try:
+        expires_at = datetime.fromisoformat(expires_at_text)
+    except Exception:
+        return None, "bad_expiry"
+    return {"email": email, "expires_at": expires_at}, None
+
 def send_app_email_otp(email):
+    expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
+    if supabase and env_flag("SUPABASE_EMAIL_OTP_ENABLED", True):
+        sent, error = send_supabase_email_otp(email)
+        if sent:
+            return make_supabase_email_otp_token(email, expires_at)
+        print(f"SUPABASE OTP SEND FALLBACK TO SMTP: {error}")
+
     smtp_ok, _ = smtp_config_status()
     if not smtp_ok:
         return None
     otp = f"{secrets.randbelow(10 ** EMAIL_OTP_LENGTH):0{EMAIL_OTP_LENGTH}d}"
-    expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
     text_body = (
         f"Your MicroChip Cart verification code is {otp}.\n\n"
         "This code expires in 10 minutes. Do not share it with anyone."
@@ -2157,8 +2224,25 @@ def verify_app_email_otp(email, otp, otp_token):
     otp = str(otp or "").strip()
     token_record, token_error = read_email_otp_token(otp_token)
     if not token_record:
-        print(f"APP EMAIL OTP TOKEN FAILURE: {token_error}")
-        return False, token_error
+        supabase_token_record, supabase_token_error = read_supabase_email_otp_token(otp_token)
+        if not supabase_token_record:
+            print(f"APP EMAIL OTP TOKEN FAILURE: {token_error}; SUPABASE TOKEN FAILURE: {supabase_token_error}")
+            return False, token_error
+        if supabase_token_record["email"] != email:
+            print("SUPABASE EMAIL OTP EMAIL MISMATCH:", mask_email_for_log(email), mask_email_for_log(supabase_token_record["email"]))
+            return False, "email_mismatch"
+        if now_utc() > supabase_token_record["expires_at"]:
+            print("SUPABASE EMAIL OTP EXPIRED")
+            return False, "expired"
+        if not supabase:
+            print("SUPABASE EMAIL OTP VERIFY FAILURE: missing Supabase client")
+            return False, "missing_supabase"
+        _, _, supabase_error = supabase_verify_email_otp(email, otp)
+        if supabase_error:
+            print(f"SUPABASE EMAIL OTP VERIFICATION FAILURE: {supabase_error}")
+            return False, "invalid"
+        print("SUPABASE EMAIL OTP VERIFICATION SUCCESS")
+        return True, None
     if token_record["email"] != email:
         print("APP EMAIL OTP EMAIL MISMATCH:", mask_email_for_log(email), mask_email_for_log(token_record["email"]))
         return False, "email_mismatch"
