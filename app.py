@@ -1047,12 +1047,13 @@ def smtp_config():
     host = mail_env("SMTP_HOST", "MAIL_SERVER")
     username = mail_env("SMTP_USERNAME", "MAIL_USERNAME")
     password = mail_env("SMTP_PASSWORD", "MAIL_PASSWORD")
-    sender = mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=username or ADMIN_NOTIFICATION_EMAIL)
+    sender = mail_env("SMTP_FROM", "MAIL_DEFAULT_SENDER", default=ADMIN_NOTIFICATION_EMAIL)
+    sender_name = mail_env("SMTP_FROM_NAME", "MAIL_DEFAULT_SENDER_NAME", default="MicrochipCart")
     port = mail_env("SMTP_PORT", "MAIL_PORT", default="587")
     use_ssl = mail_env("SMTP_SSL", "MAIL_USE_SSL", default="false").lower() == "true"
     use_tls = mail_env("SMTP_TLS", "MAIL_USE_TLS", default="true").lower() == "true"
     timeout = int(mail_env("SMTP_TIMEOUT_SECONDS", default="2"))
-    return host, username, password, sender, port, use_ssl, use_tls, timeout
+    return host, username, password, sender, sender_name, port, use_ssl, use_tls, timeout
 
 def smtp_config_status():
     host, username, password, sender, *_ = smtp_config()
@@ -1363,7 +1364,7 @@ def api_error(message, status=400):
 # ── Email (SMTP) ──────────────────────────────────────────────────────────────
 
 def send_email(to_email, subject, text_body, html_body=None):
-    host, username, password, sender, port, use_ssl, use_tls, timeout = smtp_config()
+    host, username, password, sender, configured_sender_name, port, use_ssl, use_tls, timeout = smtp_config()
     configured, missing = smtp_config_status()
     if not configured:
         print(f"SMTP not configured ({', '.join(missing)}). Skipping: {subject} -> {to_email}")
@@ -1377,7 +1378,7 @@ def send_email(to_email, subject, text_body, html_body=None):
     envelope_from = mail_env("SMTP_ENVELOPE_FROM", default=username_addr or sender_addr)
     msg = EmailMessage()
     msg["Subject"] = subject
-    msg["From"]    = formataddr((sender_name or "MicrochipCart", sender_addr))
+    msg["From"]    = formataddr((sender_name or configured_sender_name or "MicrochipCart", sender_addr))
     msg["To"]      = recipient_addr
     msg["Date"]    = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=(sender_addr.split("@", 1)[1] if "@" in sender_addr else None))
