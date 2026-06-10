@@ -1075,7 +1075,7 @@ def smtp_config():
     port = mail_env("SMTP_PORT", "MAIL_PORT", default="587")
     use_ssl = mail_env("SMTP_SSL", "MAIL_USE_SSL", default="false").lower() == "true"
     use_tls = mail_env("SMTP_TLS", "MAIL_USE_TLS", default="true").lower() == "true"
-    timeout = int(mail_env("SMTP_TIMEOUT_SECONDS", default="2"))
+    timeout = int(mail_env("SMTP_TIMEOUT_SECONDS", default="10"))
     return host, username, password, sender, sender_name, port, use_ssl, use_tls, timeout
 
 def smtp_sender_address():
@@ -2129,15 +2129,6 @@ def read_supabase_email_otp_token(token):
 
 def send_app_email_otp(email):
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
-    if supabase and SUPABASE_EMAIL_OTP_ENABLED:
-        sent, error = send_supabase_email_otp(email)
-        if sent:
-            return make_supabase_email_otp_token(email, expires_at)
-        print(f"SUPABASE OTP SEND FALLBACK TO SMTP: {error}")
-
-    smtp_ok, _ = smtp_config_status()
-    if not smtp_ok:
-        return None
     otp = f"{secrets.randbelow(10 ** EMAIL_OTP_LENGTH):0{EMAIL_OTP_LENGTH}d}"
     text_body = (
         f"Your MicroChip Cart verification code is {otp}.\n\n"
@@ -2148,9 +2139,19 @@ def send_app_email_otp(email):
         f"<h2 style=\"letter-spacing:4px;\">{otp}</h2>"
         "<p>This code expires in 10 minutes. Do not share it with anyone.</p>"
     )
-    if not send_email(email, "Your MicroChip Cart verification code", text_body, html_body):
-        return None
-    return make_email_otp_token(email, otp, expires_at)
+    smtp_ok, _ = smtp_config_status()
+    if smtp_ok:
+        if send_email(email, "Your MicroChip Cart verification code", text_body, html_body):
+            return make_email_otp_token(email, otp, expires_at)
+        print("APP EMAIL OTP SMTP SEND FAILED; trying Supabase fallback.")
+
+    if supabase and SUPABASE_EMAIL_OTP_ENABLED:
+        sent, error = send_supabase_email_otp(email)
+        if sent:
+            return make_supabase_email_otp_token(email, expires_at)
+        print(f"SUPABASE OTP SEND FAILURE AFTER SMTP PATH: {error}")
+
+    return None
 
 def local_email_verification_fallback(email):
     smtp_ok, _ = smtp_config_status()
