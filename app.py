@@ -3662,7 +3662,9 @@ def api_owner_login():
     data = request.get_json(silent=True) or {}
     email = normalize_email(data.get("email"))
     password = data.get("password") or ""
-    if email == OWNER_EMAIL and password == OWNER_PASSWORD:
+    owner_credentials_ok = email == OWNER_EMAIL and password == OWNER_PASSWORD
+    admin_credentials_ok = email == ADMIN_EMAIL and password == ADMIN_PASSWORD
+    if owner_credentials_ok or admin_credentials_ok:
         session["owner_logged_in"] = True
         session["owner_auth_version"] = owner_auth_version()
         session["admin_logged_in"] = True
