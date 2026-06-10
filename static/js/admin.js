@@ -13,6 +13,7 @@ const adminState = {
 };
 
 const $ = selector => document.querySelector(selector);
+const isCompanyAdmin = document.body.dataset.companyAdmin === "true";
 
 const inr = new Intl.NumberFormat("en-IN", {
   maximumFractionDigits: 0
@@ -100,6 +101,7 @@ function initTheme() {
 }
 
 function setPanel(name) {
+  if (!$(`#${name}Panel`)) return;
   document.querySelectorAll(".side-nav [data-panel]").forEach(button => {
     button.classList.toggle("active", button.dataset.panel === name);
   });
@@ -140,7 +142,7 @@ function renderSummary() {
     ["Orders", cards.orders ?? 0],
     ["Pending", cards.pending_approvals ?? cards.pending_orders ?? 0],
     ["Revenue", moneyLabel(cards.approved_revenue || 0)]
-  ];
+  ].filter(([label]) => isCompanyAdmin || label !== "Users");
   $("#summaryCards").innerHTML = items.map(([label, value]) => `
     <article class="stat-card">
       <span>${escapeHtml(label)}</span>
@@ -247,6 +249,7 @@ function renderOrders() {
 }
 
 function renderBusinesses() {
+  if (!$("#businessesTable")) return;
   const visible = adminState.businesses.filter(b => adminState.businessFilter === "all" || b.status === adminState.businessFilter);
   $("#businessesTable").innerHTML = visible.length ? visible.map(b => `
     <article class="order-card">
@@ -272,6 +275,7 @@ function renderBusinesses() {
 }
 
 function renderUsers() {
+  if (!$("#usersTable") || !$("#userCountBadge")) return;
   const orders = adminState.orders.filter(order => order.status !== "Rejected");
   $("#userCountBadge").textContent = `${orders.length} shipments`;
   $("#usersTable").innerHTML = orders.length ? orders.map(order => {
@@ -327,6 +331,7 @@ function renderAnalytics() {
 }
 
 function renderSettings() {
+  if (!$("#settingsForm")) return;
   const settings = adminState.settings || {};
   const form = $("#settingsForm");
   form.store_name.value = settings.store_name || "Microchip Cart";
@@ -370,6 +375,7 @@ async function loadOrders(forceRefresh = false) {
 }
 
 async function loadBusinesses(forceRefresh = false) {
+  if (!isCompanyAdmin) return;
   if (adminState.businesses.length && !forceRefresh) {
     renderBusinesses();
   }
@@ -383,6 +389,7 @@ async function loadBusinesses(forceRefresh = false) {
 }
 
 async function loadUsers(forceRefresh = false) {
+  if (!isCompanyAdmin) return;
   if (adminState.users.length && !forceRefresh) {
     renderUsers();
   }
@@ -401,6 +408,7 @@ async function loadAnalytics(forceRefresh = false) {
 }
 
 async function loadSettings(forceRefresh = false) {
+  if (!isCompanyAdmin) return;
   if (adminState.settings && !forceRefresh) {
     renderSettings();
   }
@@ -410,14 +418,16 @@ async function loadSettings(forceRefresh = false) {
 }
 
 async function refreshAll() {
-  const results = await Promise.allSettled([
+  const loaders = [
     loadSummary(true),
     loadProducts(true),
     loadOrders(true),
-    loadBusinesses(true),
     loadAnalytics(true),
-    loadSettings(true)
-  ]);
+  ];
+  if (isCompanyAdmin) {
+    loaders.push(loadBusinesses(true), loadSettings(true));
+  }
+  const results = await Promise.allSettled(loaders);
   renderSummary();
   renderUsers();
   const failed = results.find(result => result.status === "rejected");
@@ -670,6 +680,7 @@ function bindOrders() {
 }
 
 function bindSettings() {
+  if (!$("#settingsForm")) return;
   $("#settingsForm").addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.currentTarget;

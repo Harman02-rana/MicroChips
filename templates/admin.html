@@ -6,7 +6,7 @@
     <title>Business Panel | Microchip Cart</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=business-mobile-nozoom-v1">
   </head>
-  <body>
+  <body data-company-admin="{{ 'true' if is_owner_admin else 'false' }}">
     <div class="admin-shell">
       <aside class="sidebar">
         <a class="brand-lockup" href="/admin">
@@ -16,10 +16,14 @@
           <button class="active" type="button" data-panel="dashboard">Dashboard</button>
           <button type="button" data-panel="products">Products</button>
           <button type="button" data-panel="orders">Orders</button>
+          {% if is_owner_admin %}
           <button type="button" data-panel="businesses">Businesses</button>
           <button type="button" data-panel="users">Dispatch</button>
+          {% endif %}
           <button type="button" data-panel="analytics">Analysis</button>
+          {% if is_owner_admin %}
           <button type="button" data-panel="settings">Settings</button>
+          {% endif %}
         </nav>
         <div class="side-footer">
           <button class="ghost-btn" id="themeToggle" type="button">Theme</button>
@@ -147,6 +151,7 @@
           </article>
         </section>
 
+        {% if is_owner_admin %}
         <section class="panel" id="businessesPanel">
           <article class="card">
             <div class="card-head">
@@ -171,6 +176,7 @@
             <div id="usersTable" class="order-list"></div>
           </article>
         </section>
+        {% endif %}
 
         <section class="panel" id="analyticsPanel">
           <div class="split-grid">
@@ -205,6 +211,7 @@
           </div>
         </section>
 
+        {% if is_owner_admin %}
         <section class="panel" id="settingsPanel">
           <article class="card">
             <div class="card-head">
@@ -293,6 +300,7 @@
             </form>
           </article>
         </section>
+        {% endif %}
       </main>
     </div>
 

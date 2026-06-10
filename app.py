@@ -1367,6 +1367,14 @@ def require_admin():
     if not session.get("admin_logged_in"):
         abort(make_response(api_error("Admin login required.", 401)[0], 401))
 
+def is_company_admin_session():
+    return bool(session.get("admin_role") == "owner_admin" or owner_session_is_current())
+
+def require_company_admin():
+    require_admin()
+    if not is_company_admin_session():
+        abort(make_response(api_error("Company admin access required.", 403)[0], 403))
+
 def owner_auth_version():
     fingerprint = f"{OWNER_EMAIL}\0{OWNER_PASSWORD}".encode("utf-8")
     return hashlib.sha256(fingerprint).hexdigest()[:24]
@@ -1917,7 +1925,7 @@ def admin_page():
         return redirect("/")
     if not session.get("admin_logged_in"):
         return redirect(url_for("admin_login_page"))
-    is_owner_admin = session.get("admin_role") == "owner_admin" or session.get("owner_logged_in")
+    is_owner_admin = is_company_admin_session()
     
     if not is_owner_admin:
         db = DBSession()
@@ -1953,6 +1961,7 @@ def admin_invoice(order_id):
         abort(404)
     return render_invoice_html(order_to_dict(order))
 
+@app.get("/company")
 @app.get("/owner")
 def owner_page():
     if session.get("admin_role") == "distributor" and not session.get("owner_logged_in"):
@@ -1962,6 +1971,7 @@ def owner_page():
         return redirect(url_for("owner_login_page"))
     return render_template("owner_admin.html", store_mode=DATABASE_LABEL, owner_email=OWNER_EMAIL)
 
+@app.get("/company/login")
 @app.get("/owner/login")
 def owner_login_page():
     if owner_session_is_current():
@@ -3674,25 +3684,30 @@ def api_owner_overview():
 @app.get("/api/admin/summary")
 def api_admin_summary():
     require_admin()
+    is_company_admin = is_company_admin_session()
     db = DBSession()
     try:
-        users_count    = db.query(UserModel).count()
         real_products  = db.query(ProductModel).filter_by(is_sample=False).count()
         total_orders   = db.query(OrderModel).count()
         pending_orders = db.query(OrderModel).filter_by(status="Pending").count()
-        pending_businesses = db.query(BusinessProfileModel).filter_by(approval_status="Pending").count()
         approved       = db.query(OrderModel).filter_by(status="Approved").all()
         revenue        = sum(float((o.totals or {}).get("total") or 0) for o in approved)
         smtp_ok, smtp_missing = smtp_config_status()
+        cards = {
+            "products":         real_products,
+            "orders":           total_orders,
+            "pending_orders":   pending_orders,
+            "pending_approvals": pending_orders,
+            "approved_revenue": money(revenue),
+        }
+        if is_company_admin:
+            users_count = db.query(UserModel).count()
+            pending_businesses = db.query(BusinessProfileModel).filter_by(approval_status="Pending").count()
+            cards["users"] = users_count
+            cards["pending_approvals"] = pending_orders + pending_businesses
         return api_ok({
-            "cards": {
-                "users":            users_count,
-                "products":         real_products,
-                "orders":           total_orders,
-                "pending_orders":   pending_orders,
-                "pending_approvals": pending_orders + pending_businesses,
-                "approved_revenue": money(revenue),
-            },
+            "cards":          cards,
+            "company_admin":  is_company_admin,
             "store_mode":     DATABASE_LABEL,
             "smtp_configured": smtp_ok,
             "smtp_missing":    smtp_missing,
@@ -3838,7 +3853,7 @@ def api_admin_next_image_path():
 
 @app.get("/api/admin/users")
 def api_admin_users():
-    require_admin()
+    require_company_admin()
     db = DBSession()
     try:
         users = db.query(UserModel).order_by(UserModel.created_at.desc()).all()
@@ -3849,7 +3864,7 @@ def api_admin_users():
 
 @app.get("/api/admin/businesses")
 def api_admin_businesses():
-    require_admin()
+    require_company_admin()
     db = DBSession()
     try:
         profiles = db.query(BusinessProfileModel).all()
@@ -3877,7 +3892,7 @@ def api_admin_businesses():
 
 @app.patch("/api/admin/businesses/<business_id>")
 def api_admin_update_business(business_id):
-    require_admin()
+    require_company_admin()
     db = DBSession()
     try:
         business = db.query(BusinessProfileModel).filter_by(id=business_id).first()
@@ -3953,7 +3968,7 @@ def api_admin_analytics():
 
 @app.get("/api/admin/settings")
 def api_admin_settings():
-    require_admin()
+    require_company_admin()
     db = DBSession()
     try:
         row = db.query(SettingsModel).filter_by(key="store").first()
@@ -3964,7 +3979,7 @@ def api_admin_settings():
 
 @app.put("/api/admin/settings")
 def api_admin_update_settings():
-    require_admin()
+    require_company_admin()
     data = request.get_json(silent=True) or {}
     db   = DBSession()
     try:
