@@ -628,6 +628,7 @@ def env_flag(name, default=False):
 
 SUPABASE_AUTH_LOGIN_FALLBACK = env_flag("SUPABASE_AUTH_LOGIN_FALLBACK", False)
 SUPABASE_AUTH_SYNC_ON_SIGNUP = env_flag("SUPABASE_AUTH_SYNC_ON_SIGNUP", False)
+SUPABASE_EMAIL_OTP_ENABLED = env_flag("SUPABASE_EMAIL_OTP_ENABLED", True)
 
 def supabase_admin_client():
     global supabase_admin
@@ -2128,7 +2129,7 @@ def read_supabase_email_otp_token(token):
 
 def send_app_email_otp(email):
     expires_at = now_utc() + timedelta(seconds=EMAIL_OTP_TTL_SECONDS)
-    if supabase and env_flag("SUPABASE_EMAIL_OTP_ENABLED", False):
+    if supabase and SUPABASE_EMAIL_OTP_ENABLED:
         sent, error = send_supabase_email_otp(email)
         if sent:
             return make_supabase_email_otp_token(email, expires_at)
