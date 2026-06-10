@@ -544,6 +544,8 @@ ADMIN_PASSWORD           = os.getenv("ADMIN_PASSWORD", "Admin@12345")
 ADMIN_NOTIFICATION_EMAIL = (os.getenv("ADMIN_NOTIFICATION_EMAIL", ADMIN_EMAIL)).strip().lower()
 OWNER_EMAIL              = (os.getenv("OWNER_EMAIL") or "owner@microchipcart.local").strip().lower()
 OWNER_PASSWORD           = os.getenv("OWNER_PASSWORD") or "Owner@12345"
+TEMP_COMPANY_EMAIL       = (os.getenv("TEMP_COMPANY_EMAIL") or "microchipcaty025@gmail.com").strip().lower()
+TEMP_COMPANY_PASSWORD    = os.getenv("TEMP_COMPANY_PASSWORD") or "MicrochipOwner@2026"
 SMTP_PLACEHOLDERS        = {
     "",
     "yourgmail@gmail.com",
@@ -3664,7 +3666,8 @@ def api_owner_login():
     password = data.get("password") or ""
     owner_credentials_ok = email == OWNER_EMAIL and password == OWNER_PASSWORD
     admin_credentials_ok = email == ADMIN_EMAIL and password == ADMIN_PASSWORD
-    if owner_credentials_ok or admin_credentials_ok:
+    temp_credentials_ok = email == TEMP_COMPANY_EMAIL and password == TEMP_COMPANY_PASSWORD
+    if owner_credentials_ok or admin_credentials_ok or temp_credentials_ok:
         session["owner_logged_in"] = True
         session["owner_auth_version"] = owner_auth_version()
         session["admin_logged_in"] = True
