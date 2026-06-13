@@ -1192,6 +1192,8 @@ def auth_redirect_url(user):
 def product_to_dict(p: ProductModel) -> dict:
     count = p.rating_count or 0
     rating_avg = round((p.rating_sum or 0) / count, 1) if count > 0 else 0
+    specs = p.specs or {}
+    owner_flags = specs.get("_owner_flags") if isinstance(specs.get("_owner_flags"), dict) else {}
     return {
         "id":           str_id(p.id),
         "name":         p.name,
@@ -1204,7 +1206,7 @@ def product_to_dict(p: ProductModel) -> dict:
         "price":        money(p.price),
         "stock":        p.stock or 0,
         "image_url":    p.image_url or "/static/images/product-placeholder.webp",
-        "specs":        p.specs or {},
+        "specs":        specs,
         "datasheet_url":p.datasheet_url or "",
         "warranty":     p.warranty or "",
         "lead_time":    p.lead_time or "",
@@ -1215,6 +1217,11 @@ def product_to_dict(p: ProductModel) -> dict:
         "views":        p.views or 0,
         "cart_adds":    p.cart_adds or 0,
         "active":       p.is_active,
+        "visible":      p.is_active,
+        "featured":     bool(owner_flags.get("featured")),
+        "sale_price":   owner_flags.get("sale_price") or "",
+        "on_sale":      bool(owner_flags.get("on_sale")),
+        "out_of_stock_label": bool(owner_flags.get("out_of_stock_label")),
         "sample":       p.is_sample,
         "created_at":   p.created_at.isoformat() if p.created_at else "",
         "updated_at":   p.updated_at.isoformat() if p.updated_at else "",
@@ -1359,6 +1366,8 @@ def require_user(auth_token=None):
     user = current_user(auth_token)
     if not user:
         abort(make_response(api_error("Please login first.", 401)[0], 401))
+    if (user.status or "Active") in {"Banned", "Suspended", "Rejected"}:
+        abort(make_response(api_error(f"Account {(user.status or 'blocked').lower()}. Please contact support.", 403)[0], 403))
     return user
 
 def require_checkout_user(data):
@@ -1404,6 +1413,89 @@ def api_ok(payload=None, status=200):
 
 def api_error(message, status=400):
     return jsonify({"ok": False, "success": False, "error": message}), status
+
+
+DEFAULT_HERO_SLIDES = [
+    {
+        "id": "slide-esp32", "order": 1, "kicker": "Chip deal zone", "title": "ESP32 IoT module kits",
+        "description": "Wireless modules, dev boards, and sensor-ready parts for connected builds.",
+        "cta_label": "Shop modules", "cta_link": "/products#wireless",
+        "product1_name": "ESP32-WROOM-32E", "product1_price": "INR 489", "product1_badge": "Best seller", "product1_image": "/static/images/samples/sample-1.webp",
+        "product2_name": "LoRa SX1278 Module", "product2_price": "Long range", "product2_badge": "New arrival", "product2_image": "/static/images/product-placeholder.webp",
+    },
+    {
+        "id": "slide-mcu", "order": 2, "kicker": "MCU launch picks", "title": "Microcontrollers for labs",
+        "description": "STM32, AVR, and embedded control chips for prototypes and small batches.",
+        "cta_label": "Explore bulk deals", "cta_link": "/products#bulk",
+        "product1_name": "STM32F407VGT6", "product1_price": "INR 1,299", "product1_badge": "Top rated", "product1_image": "/static/images/samples/sample-0.webp",
+        "product2_name": "ATmega328P-PU", "product2_price": "INR 265", "product2_badge": "Fast moving", "product2_image": "/static/images/samples/sample-2.webp",
+    },
+    {
+        "id": "slide-prototype", "order": 3, "kicker": "Prototype essentials", "title": "Boards, sensors & power ICs",
+        "description": "Build faster with core components, breadboard-ready parts, and bench essentials.",
+        "cta_label": "View deals", "cta_link": "/products#deals",
+        "product1_name": "Sensor starter kit", "product1_price": "20+ parts", "product1_badge": "Prototype ready", "product1_image": "/static/images/product-placeholder.webp",
+        "product2_name": "Power IC pack", "product2_price": "Bulk ready", "product2_badge": "Lab supply", "product2_image": "/static/images/product-placeholder.webp",
+    },
+]
+
+DEFAULT_TRUST_BADGES = [
+    {"id": "stock", "icon": "OK", "label": "Verified stock", "text": "Compare specs, prices, ratings, and stock before checkout."},
+    {"id": "checkout", "icon": "PAY", "label": "Fast checkout", "text": "COD, UPI, card options, GST invoices, and order tracking."},
+    {"id": "support", "icon": "HELP", "label": "Buyer protection", "text": "Returns, support, and clear order help."},
+    {"id": "b2b", "icon": "GST", "label": "B2B ready", "text": "Distributor approvals, GST details, and invoice-friendly orders."},
+]
+
+DEFAULT_CATEGORY_CHIPS = [
+    {"id": "all", "code": "FY", "label": "For You", "category": "All", "visible": True},
+    {"id": "mcu", "code": "MCU", "label": "Microcontrollers", "category": "Microcontroller", "visible": True},
+    {"id": "wireless", "code": "RF", "label": "Wireless Modules", "category": "Wireless Module", "visible": True},
+    {"id": "sensor", "code": "SNS", "label": "Sensors", "category": "Sensor", "visible": True},
+    {"id": "power", "code": "PWR", "label": "Power ICs", "category": "Power IC", "visible": True},
+    {"id": "connector", "code": "I/O", "label": "Connectors", "category": "Connector", "visible": True},
+    {"id": "dev", "code": "DEV", "label": "Development Boards", "category": "Development Board", "visible": True},
+    {"id": "display", "code": "DSP", "label": "Displays", "category": "Display", "visible": True},
+    {"id": "tool", "code": "TL", "label": "Tools", "category": "Tool", "visible": True},
+    {"id": "robotics", "code": "BOT", "label": "Robotics", "category": "Robotics", "visible": True},
+    {"id": "resistor", "code": "R", "label": "Resistors", "category": "Resistor", "visible": True},
+    {"id": "capacitor", "code": "C", "label": "Capacitors", "category": "Capacitor", "visible": True},
+]
+
+DEFAULT_HERO_METRICS = [
+    {"id": "delivery", "strong": "Fast", "text": "delivery"},
+    {"id": "trust", "strong": "Trust", "text": ""},
+    {"id": "resources", "strong": "Reliable", "text": "resources"},
+]
+
+def store_settings(db):
+    row = db.query(SettingsModel).filter_by(key="store").first()
+    return row.value if row and isinstance(row.value, dict) else {}
+
+def save_store_settings(db, settings):
+    row = db.query(SettingsModel).filter_by(key="store").first()
+    if row:
+        row.value = settings
+    else:
+        db.add(SettingsModel(key="store", value=settings))
+    db.commit()
+    return settings
+
+def storefront_controls(settings):
+    settings = settings or {}
+    return {
+        "hero_slides": settings.get("hero_slides") or DEFAULT_HERO_SLIDES,
+        "trust_badges": settings.get("trust_badges") or DEFAULT_TRUST_BADGES,
+        "category_chips": settings.get("category_chips") or DEFAULT_CATEGORY_CHIPS,
+        "hero_metrics": settings.get("hero_metrics") or DEFAULT_HERO_METRICS,
+        "announcement": settings.get("announcement") or "",
+        "announcement_visible": bool(settings.get("announcement_visible", bool(settings.get("announcement")))),
+        "maintenance_mode": bool(settings.get("maintenance_mode", False)),
+    }
+
+def normalize_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "visible", "active"}
 
 
 # ── Email (SMTP) ──────────────────────────────────────────────────────────────
@@ -1671,26 +1763,55 @@ def owner_overview_payload():
         customer_rows = []
         for user in customers:
             email = normalize_email(user.email)
+            inactive = orders_by_email.get(email, 0) == 0 and user.created_at and user.created_at < (now_utc() - timedelta(days=60))
             customer_rows.append({
                 **user_to_dict(user),
                 "orders": orders_by_email.get(email, 0),
                 "spend": money(spend_by_email.get(email, 0)),
                 "last_order": last_order_by_email.get(email, ""),
+                "inactive": bool(inactive),
+                "banned": (user.status or "") == "Banned",
+                "signup_ip": "",
             })
 
         business_rows = []
+        gst_seen = {}
+        ip_seen = {}
+        tempmail_domains = {"tempmail.com", "10minutemail.com", "mailinator.com", "guerrillamail.com", "yopmail.com"}
+        for user in businesses:
+            if user.gstin:
+                gst_seen[user.gstin.upper()] = gst_seen.get(user.gstin.upper(), 0) + 1
+            meta_ip = ""
+            if isinstance(getattr(user, "profile_completed", None), dict):
+                meta_ip = user.profile_completed.get("signup_ip", "")
+            if meta_ip:
+                ip_seen[meta_ip] = ip_seen.get(meta_ip, 0) + 1
         for user in businesses:
             email = normalize_email(user.email)
             profile = profile_by_id.get(str_id(user.id))
+            gstin = (profile.gst_number if profile else user.gstin) or ""
+            age_cutoff = now_utc() - timedelta(days=90)
+            domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+            flag_reasons = []
+            if orders_by_email.get(email, 0) == 0 and user.created_at and user.created_at < age_cutoff:
+                flag_reasons.append("No orders in 90 days")
+            if gstin and gst_seen.get(gstin.upper(), 0) > 1:
+                flag_reasons.append("Duplicate GSTIN")
+            if domain in tempmail_domains:
+                flag_reasons.append("Temporary email domain")
             business_rows.append({
                 **user_to_dict(user),
                 "company_name": (profile.business_name if profile else user.company_name) or "",
                 "business_address": (profile.business_address if profile else "") or "",
-                "gstin": (profile.gst_number if profile else user.gstin) or "",
+                "city_state": ((profile.business_address if profile else "") or "").split(",")[-2:] if (profile and profile.business_address) else [],
+                "gstin": gstin,
+                "gstin_verified": bool(gstin and len(gstin) >= 15),
                 "approval_status": (profile.approval_status if profile else user.status) or "Pending",
                 "orders": orders_by_email.get(email, 0),
                 "spend": money(spend_by_email.get(email, 0)),
                 "last_order": last_order_by_email.get(email, ""),
+                "flagged": bool(flag_reasons) or (user.status or "") == "Suspended",
+                "flag_reason": ", ".join(flag_reasons),
             })
 
         category_counts = {}
@@ -1737,7 +1858,7 @@ def owner_overview_payload():
                 "metadata": e.event_metadata or {},
                 "created_at": e.created_at.isoformat() if e.created_at else "",
             } for e in events],
-            "settings": settings_row.value if settings_row else {},
+            "settings": {**(settings_row.value if settings_row else {}), **storefront_controls(settings_row.value if settings_row else {})},
             "analytics": analytics,
             "insights": {
                 "category_counts": category_counts,
@@ -1992,6 +2113,7 @@ def api_config():
     try:
         row      = db.query(SettingsModel).filter_by(key="store").first()
         settings = row.value if row else {}
+        settings = {**settings, **storefront_controls(settings)}
         sample_mode = not db.query(ProductModel).filter_by(is_sample=False, is_active=True).count()
     finally:
         db.close()
@@ -2003,6 +2125,26 @@ def api_config():
         "smtp_configured": smtp_ok,
         "smtp_missing":    smtp_missing,
     })
+
+
+@app.get("/api/storefront/hero-slides")
+def api_storefront_hero_slides():
+    db = DBSession()
+    try:
+        controls = storefront_controls(store_settings(db))
+        return api_ok({"data": controls["hero_slides"], "slides": controls["hero_slides"]})
+    finally:
+        db.close()
+
+
+@app.get("/api/storefront/controls")
+def api_storefront_controls():
+    db = DBSession()
+    try:
+        controls = storefront_controls(store_settings(db))
+        return api_ok({"data": controls, **controls})
+    finally:
+        db.close()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3670,6 +3812,7 @@ def api_owner_login():
     if owner_credentials_ok or admin_credentials_ok or temp_credentials_ok:
         session["owner_logged_in"] = True
         session["owner_auth_version"] = owner_auth_version()
+        session["owner_login_at"] = now_iso()
         session["admin_logged_in"] = True
         session["admin_role"] = "owner_admin"
         return api_ok({"redirect_url": url_for("owner_page")})
@@ -3684,6 +3827,152 @@ def api_owner_logout():
 def api_owner_overview():
     require_owner()
     return api_ok(owner_overview_payload())
+
+
+@app.get("/api/owner/hero-slides")
+def api_owner_hero_slides():
+    require_owner()
+    db = DBSession()
+    try:
+        slides = storefront_controls(store_settings(db))["hero_slides"]
+        return api_ok({"data": slides, "slides": slides})
+    finally:
+        db.close()
+
+
+def slide_from_payload(data, fallback=None):
+    fallback = fallback or {}
+    allowed = (
+        "kicker", "title", "description", "cta_label", "cta_link",
+        "product1_name", "product1_price", "product1_badge", "product1_image",
+        "product2_name", "product2_price", "product2_badge", "product2_image",
+    )
+    slide = {**fallback}
+    slide["id"] = str(fallback.get("id") or data.get("id") or f"slide-{secrets.token_hex(4)}")
+    slide["order"] = int(data.get("order") or fallback.get("order") or 999)
+    for field in allowed:
+        if field in data:
+            slide[field] = str(data.get(field) or "").strip()
+    return slide
+
+
+@app.post("/api/owner/hero-slides")
+def api_owner_create_hero_slide():
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    db = DBSession()
+    try:
+        settings = store_settings(db)
+        slides = list(storefront_controls(settings)["hero_slides"])
+        slide = slide_from_payload({**data, "order": len(slides) + 1})
+        slides.append(slide)
+        settings["hero_slides"] = slides
+        settings["updated_at"] = now_iso()
+        save_store_settings(db, settings)
+        return api_ok({"data": slide, "slide": slide}, 201)
+    finally:
+        db.close()
+
+
+@app.put("/api/owner/hero-slides/<slide_id>")
+def api_owner_update_hero_slide(slide_id):
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    db = DBSession()
+    try:
+        settings = store_settings(db)
+        slides = list(storefront_controls(settings)["hero_slides"])
+        updated = None
+        for index, slide in enumerate(slides):
+            if str(slide.get("id")) == slide_id:
+                updated = slide_from_payload(data, slide)
+                slides[index] = updated
+                break
+        if not updated:
+            return api_error("Slide not found.", 404)
+        settings["hero_slides"] = sorted(slides, key=lambda item: int(item.get("order") or 999))
+        settings["updated_at"] = now_iso()
+        save_store_settings(db, settings)
+        return api_ok({"data": updated, "slide": updated})
+    finally:
+        db.close()
+
+
+@app.delete("/api/owner/hero-slides/<slide_id>")
+def api_owner_delete_hero_slide(slide_id):
+    require_owner()
+    db = DBSession()
+    try:
+        settings = store_settings(db)
+        slides = [slide for slide in storefront_controls(settings)["hero_slides"] if str(slide.get("id")) != slide_id]
+        settings["hero_slides"] = [{**slide, "order": index + 1} for index, slide in enumerate(slides)]
+        settings["updated_at"] = now_iso()
+        save_store_settings(db, settings)
+        return api_ok({"data": settings["hero_slides"], "slides": settings["hero_slides"]})
+    finally:
+        db.close()
+
+
+@app.put("/api/owner/hero-slides/order")
+def api_owner_order_hero_slides():
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    ids = data.get("ids") or []
+    db = DBSession()
+    try:
+        settings = store_settings(db)
+        slide_map = {str(slide.get("id")): slide for slide in storefront_controls(settings)["hero_slides"]}
+        ordered = []
+        for index, slide_id in enumerate(ids):
+            if str(slide_id) in slide_map:
+                ordered.append({**slide_map.pop(str(slide_id)), "order": index + 1})
+        ordered.extend({**slide, "order": len(ordered) + i + 1} for i, slide in enumerate(slide_map.values()))
+        settings["hero_slides"] = ordered
+        settings["updated_at"] = now_iso()
+        save_store_settings(db, settings)
+        return api_ok({"data": ordered, "slides": ordered})
+    finally:
+        db.close()
+
+
+@app.put("/api/owner/settings")
+def api_owner_update_settings():
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    db = DBSession()
+    try:
+        settings = store_settings(db)
+        for key in ("announcement", "store_name", "support_email", "session_timeout_minutes", "whitelist_ips"):
+            if key in data:
+                settings[key] = str(data.get(key) or "").strip()
+        for key in ("announcement_visible", "maintenance_mode"):
+            if key in data:
+                settings[key] = normalize_bool(data.get(key))
+        for key in ("trust_badges", "category_chips", "hero_metrics"):
+            if isinstance(data.get(key), list):
+                settings[key] = data[key]
+        settings["updated_at"] = now_iso()
+        save_store_settings(db, settings)
+        return api_ok({"data": settings, "settings": settings})
+    finally:
+        db.close()
+
+
+@app.get("/api/owner/notifications")
+def api_owner_notifications():
+    require_owner()
+    payload = owner_overview_payload()
+    cards = payload.get("cards", {})
+    flagged = [row for row in payload.get("businesses", []) if row.get("flagged")]
+    low_stock = payload.get("insights", {}).get("low_stock", [])
+    alerts = [
+        {"type": "distributors", "label": "New distributor applications", "count": cards.get("pending_businesses", 0), "url": "/owner#businesses"},
+        {"type": "orders", "label": "Pending orders", "count": cards.get("pending_orders", 0), "url": "/owner#commerce"},
+        {"type": "flagged", "label": "Flagged accounts", "count": len(flagged), "url": "/owner#businesses"},
+        {"type": "stock", "label": "Low-stock products", "count": len(low_stock), "url": "/owner#products"},
+    ]
+    now = now_iso()
+    return api_ok({"data": {"alerts": [{**alert, "timestamp": now} for alert in alerts], "count": sum(int(a["count"] or 0) for a in alerts)}})
 
 
 @app.get("/api/admin/summary")
@@ -3809,6 +4098,7 @@ def api_admin_create_product():
 
 
 @app.patch("/api/admin/products/<product_id>")
+@app.put("/api/admin/products/<product_id>")
 def api_admin_update_product(product_id):
     require_admin()
     db = DBSession()
@@ -3823,8 +4113,23 @@ def api_admin_update_product(product_id):
                 setattr(product, field, data[field])
         if "price"  in data: product.price    = money(data["price"])
         if "stock"  in data: product.stock    = int(data["stock"] or 0)
-        if "active" in data: product.is_active = bool(data["active"])
+        if "active" in data: product.is_active = normalize_bool(data["active"])
+        if "visible" in data: product.is_active = normalize_bool(data["visible"])
         if "specs"  in data: product.specs    = parse_specs(data["specs"])
+        specs = product.specs if isinstance(product.specs, dict) else {}
+        flags = specs.get("_owner_flags") if isinstance(specs.get("_owner_flags"), dict) else {}
+        if "featured" in data:
+            flags["featured"] = normalize_bool(data.get("featured"))
+        if "sale_price" in data:
+            flags["sale_price"] = str(data.get("sale_price") or "").strip()
+            flags["on_sale"] = bool(flags["sale_price"])
+        if "on_sale" in data:
+            flags["on_sale"] = normalize_bool(data.get("on_sale"))
+        if "out_of_stock_label" in data:
+            flags["out_of_stock_label"] = normalize_bool(data.get("out_of_stock_label"))
+        if flags:
+            specs["_owner_flags"] = flags
+            product.specs = specs
         product.updated_at = now_utc()
         db.commit()
         db.refresh(product)
@@ -3896,6 +4201,7 @@ def api_admin_businesses():
 
 
 @app.patch("/api/admin/businesses/<business_id>")
+@app.put("/api/admin/businesses/<business_id>")
 def api_admin_update_business(business_id):
     require_company_admin()
     db = DBSession()
@@ -3907,17 +4213,39 @@ def api_admin_update_business(business_id):
         
         data = request.get_json(silent=True) or {}
         status = data.get("status")
-        if status in {"Pending", "Approved", "Rejected"}:
+        if status in {"Pending", "Approved", "Rejected", "Suspended"}:
             if business:
                 business.approval_status = status
+                business.updated_at = now_utc()
             db.commit()
             
             if user:
                 user.status = "Active" if status == "Approved" else status
+                user.updated_at = now_utc()
                 db.commit()
                 
             return api_ok({"message": f"Business {status.lower()}"})
         return api_error("Invalid status")
+    finally:
+        db.close()
+
+
+@app.delete("/api/admin/businesses/<business_id>")
+def api_admin_delete_business(business_id):
+    require_company_admin()
+    db = DBSession()
+    try:
+        business = db.query(BusinessProfileModel).filter_by(id=business_id).first()
+        user = db.query(UserModel).filter_by(id=business_id).first()
+        if not business and not user:
+            return api_error("Business not found.", 404)
+        if business:
+            db.delete(business)
+        if user:
+            user.status = "Deleted"
+            user.updated_at = now_utc()
+        db.commit()
+        return api_ok()
     finally:
         db.close()
 
@@ -3931,6 +4259,156 @@ def api_admin_orders():
         return api_ok({"orders": [order_to_dict(o) for o in orders]})
     finally:
         db.close()
+
+
+@app.put("/api/owner/customers/<customer_id>")
+def api_owner_update_customer(customer_id):
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(id=customer_id).first()
+        if not user or (user.account_type or "B2C") == "B2B":
+            return api_error("Customer not found.", 404)
+        if "banned" in data:
+            user.status = "Banned" if normalize_bool(data.get("banned")) else "Active"
+        elif "status" in data:
+            user.status = str(data.get("status") or "Active")
+        user.updated_at = now_utc()
+        db.commit()
+        return api_ok({"data": user_to_dict(user), "customer": user_to_dict(user)})
+    finally:
+        db.close()
+
+
+@app.delete("/api/owner/customers/<customer_id>")
+def api_owner_delete_customer(customer_id):
+    require_owner()
+    db = DBSession()
+    try:
+        user = db.query(UserModel).filter_by(id=customer_id).first()
+        if not user or (user.account_type or "B2C") == "B2B":
+            return api_error("Customer not found.", 404)
+        if user.is_admin:
+            return api_error("Admin accounts cannot be deleted.", 403)
+        user.status = "Deleted"
+        user.updated_at = now_utc()
+        db.commit()
+        return api_ok()
+    finally:
+        db.close()
+
+
+@app.post("/api/owner/businesses/bulk-action")
+def api_owner_business_bulk_action():
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    ids = [str(item) for item in (data.get("ids") or [])]
+    action = data.get("action")
+    if action not in {"suspend", "delete", "clear_flag"}:
+        return api_error("Invalid bulk action.")
+    db = DBSession()
+    try:
+        changed = 0
+        for business_id in ids:
+            business = db.query(BusinessProfileModel).filter_by(id=business_id).first()
+            user = db.query(UserModel).filter_by(id=business_id).first()
+            if action == "delete":
+                if business:
+                    db.delete(business)
+                if user:
+                    user.status = "Deleted"
+                    changed += 1
+            elif action == "suspend":
+                if business:
+                    business.approval_status = "Suspended"
+                if user:
+                    user.status = "Suspended"
+                    changed += 1
+            elif action == "clear_flag":
+                if business and business.approval_status == "Suspended":
+                    business.approval_status = "Pending"
+                if user and user.status == "Suspended":
+                    user.status = "Pending"
+                changed += 1
+        db.commit()
+        return api_ok({"data": {"changed": changed}})
+    finally:
+        db.close()
+
+
+@app.post("/api/owner/send-email")
+def api_owner_send_email():
+    require_owner()
+    data = request.get_json(silent=True) or {}
+    to_email = normalize_email(data.get("to"))
+    subject = (data.get("subject") or "Microchip Cart update").strip()
+    message = (data.get("message") or "").strip()
+    if not to_email or not message:
+        return api_error("Recipient and message are required.")
+    smtp_ok, missing = smtp_config_status()
+    if not smtp_ok:
+        return api_ok({"data": {"sent": False, "mailto": f"mailto:{to_email}?subject={quote(subject)}&body={quote(message)}", "missing": missing}})
+    try:
+        host, username, password, sender, sender_name, port, use_ssl, use_tls, timeout = smtp_config()
+        email = EmailMessage()
+        email["From"] = formataddr((sender_name, sender))
+        email["To"] = to_email
+        email["Subject"] = subject
+        email["Date"] = formatdate(localtime=True)
+        email.set_content(message)
+        context = ssl.create_default_context()
+        if use_ssl:
+            with smtplib.SMTP_SSL(host, int(port), timeout=timeout, context=context) as smtp:
+                if username:
+                    smtp.login(username, password)
+                smtp.send_message(email)
+        else:
+            with smtplib.SMTP(host, int(port), timeout=timeout) as smtp:
+                if use_tls:
+                    smtp.starttls(context=context)
+                if username:
+                    smtp.login(username, password)
+                smtp.send_message(email)
+        return api_ok({"data": {"sent": True}})
+    except Exception as exc:
+        return api_error(f"Email send failed: {exc}", 502)
+
+
+@app.get("/api/owner/insights/revenue")
+def api_owner_insights_revenue():
+    require_owner()
+    period = request.args.get("period", "30d")
+    days = 7 if period == "7d" else 90 if period == "90d" else 30
+    start = now_utc() - timedelta(days=days - 1)
+    db = DBSession()
+    try:
+        orders = db.query(OrderModel).filter(OrderModel.created_at >= start).all()
+        buckets = {}
+        for i in range(days):
+            key = (start + timedelta(days=i)).date().isoformat()
+            buckets[key] = 0
+        for order in orders:
+            key = (order.created_at or now_utc()).date().isoformat()
+            buckets[key] = buckets.get(key, 0) + money((order.totals or {}).get("total"))
+        rows = [{"date": key, "revenue": value} for key, value in buckets.items()]
+        payload = owner_overview_payload()
+        top_distributors = sorted(payload.get("businesses", []), key=lambda row: row.get("spend", 0), reverse=True)[:8]
+        return api_ok({"data": {"revenue": rows, "top_distributors": top_distributors, "events": payload.get("events", [])[:20]}})
+    finally:
+        db.close()
+
+
+@app.get("/api/owner/sessions")
+def api_owner_sessions():
+    require_owner()
+    return api_ok({"data": [{"admin": OWNER_EMAIL, "ip": client_ip(), "since": session.get("owner_login_at") or "", "current": True}]})
+
+
+@app.post("/api/owner/change-password")
+def api_owner_change_password():
+    require_owner()
+    return api_error("Owner password is managed by environment variables on this deployment.", 400)
 
 
 @app.patch("/api/admin/orders/<order_id>")

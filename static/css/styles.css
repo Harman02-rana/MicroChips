@@ -7472,3 +7472,53 @@ button {
 #profileSetupModal input {
   min-height: 42px;
 }
+/* Storefront controls managed from the owner panel */
+.announcement-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: #0f766e;
+  color: #fff;
+  font-weight: 700;
+  text-align: center;
+}
+
+.announcement-banner button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 10, 20, 0.92);
+  color: #fff;
+}
+
+.maintenance-overlay div {
+  display: grid;
+  gap: 8px;
+  max-width: 480px;
+  text-align: center;
+}
+
+.maintenance-overlay strong {
+  font-size: clamp(28px, 5vw, 52px);
+}
+
+.price small {
+  margin-left: 6px;
+  color: var(--muted);
+  text-decoration: line-through;
+}

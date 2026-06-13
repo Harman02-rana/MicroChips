@@ -14,6 +14,7 @@
         </a>
         <nav class="side-nav" aria-label="Owner navigation">
           <button class="active" type="button" data-owner-panel="overview">Overview</button>
+          <button type="button" data-owner-panel="storefront">Storefront</button>
           <button type="button" data-owner-panel="customers">Customers</button>
           <button type="button" data-owner-panel="businesses">Distributors</button>
           <button type="button" data-owner-panel="commerce">Commerce</button>
@@ -34,6 +35,10 @@
             <h1 id="ownerPanelTitle">Overview</h1>
           </div>
           <div class="admin-meta">
+            <button class="notification-bell" id="ownerNotificationBell" type="button" aria-label="Owner notifications">
+              Alerts <strong id="ownerNotificationCount">0</strong>
+            </button>
+            <div class="notification-menu hidden" id="ownerNotificationMenu"></div>
             <span>{{ owner_email }}</span>
             <a href="/admin">Business admin</a>
             <a href="/" target="_blank" rel="noreferrer">Storefront</a>
@@ -76,22 +81,74 @@
           </div>
         </section>
 
+        <section class="panel" id="ownerStorefrontPanel">
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Hero carousel manager</h2>
+                <button type="button" id="ownerAddHeroSlide">Add slide</button>
+              </div>
+              <div id="ownerHeroSlides" class="owner-edit-list"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Announcement banner</h2>
+                <span>Live storefront top bar</span>
+              </div>
+              <form id="ownerAnnouncementForm" class="dense-form">
+                <label>Message<textarea name="announcement" rows="3"></textarea></label>
+                <label class="inline-check"><input name="announcement_visible" type="checkbox"> Show announcement bar</label>
+                <button type="submit">Save announcement</button>
+              </form>
+            </article>
+          </div>
+          <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Trust strip editor</h2>
+                <button type="button" id="ownerSaveTrust">Save trust strip</button>
+              </div>
+              <div id="ownerTrustBadges" class="owner-edit-list"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Category strip controls</h2>
+                <button type="button" id="ownerSaveCategories">Save categories</button>
+              </div>
+              <div id="ownerCategoryChips" class="owner-edit-list compact-edit-list"></div>
+            </article>
+          </div>
+          <article class="card">
+            <div class="card-head">
+              <h2>Hero metrics</h2>
+              <button type="button" id="ownerSaveMetrics">Save metrics</button>
+            </div>
+            <div id="ownerHeroMetrics" class="owner-edit-list compact-edit-list"></div>
+          </article>
+        </section>
+
         <section class="panel" id="ownerCustomersPanel">
           <article class="card">
             <div class="card-head">
               <h2>Customer users</h2>
               <input class="admin-search" id="ownerCustomerSearch" placeholder="Search customers, email, phone...">
             </div>
+            <div class="filter-row">
+              <button type="button" id="ownerBanSelected">Ban selected</button>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th><input id="ownerSelectAllCustomers" type="checkbox" aria-label="Select all customers"></th>
                     <th>Name</th>
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Orders</th>
                     <th>Spend</th>
                     <th>Last login</th>
+                    <th>Flags</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody id="ownerCustomersTable"></tbody>
@@ -106,17 +163,42 @@
               <h2>Business distributors</h2>
               <input class="admin-search" id="ownerBusinessSearch" placeholder="Search company, GSTIN, email...">
             </div>
+            <div class="filter-row">
+              <select id="ownerBusinessStatusFilter">
+                <option value="all">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Suspended">Suspended</option>
+                <option value="Flagged">Flagged</option>
+              </select>
+              <input id="ownerBusinessCityFilter" placeholder="City / state">
+              <input id="ownerBusinessMinSpend" type="number" min="0" placeholder="Min spend">
+              <select id="ownerBusinessSort">
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="spend">Highest spend</option>
+                <option value="orders">Most orders</option>
+              </select>
+              <button type="button" id="ownerBulkSuspend">Mark as spam</button>
+              <button type="button" id="ownerBulkClear">Clear flag</button>
+              <button type="button" class="danger-btn" id="ownerBulkDelete">Delete flagged</button>
+            </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
+                    <th><input id="ownerSelectAllBusinesses" type="checkbox" aria-label="Select all businesses"></th>
                     <th>Company</th>
+                    <th>Registered</th>
+                    <th>City/State</th>
                     <th>Contact</th>
                     <th>GSTIN</th>
                     <th>Orders</th>
                     <th>Spend</th>
                     <th>Status</th>
                     <th>Last login</th>
+                    <th>Flag</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -124,10 +206,35 @@
               </table>
             </div>
           </article>
+          <article class="card">
+            <div class="card-head">
+              <h2>Flagged accounts</h2>
+              <span>Spam and fake account detection</span>
+            </div>
+            <div id="ownerFlaggedAccounts" class="stack-list flagged-list"></div>
+          </article>
         </section>
 
         <section class="panel" id="ownerCommercePanel">
           <div class="split-grid owner-insight-grid">
+            <article class="card">
+              <div class="card-head">
+                <h2>Revenue</h2>
+                <select id="ownerRevenuePeriod">
+                  <option value="7d">7 days</option>
+                  <option value="30d" selected>30 days</option>
+                  <option value="90d">90 days</option>
+                </select>
+              </div>
+              <div id="ownerRevenueChart" class="analytics-bars"></div>
+            </article>
+            <article class="card">
+              <div class="card-head">
+                <h2>Top distributors</h2>
+                <span>By spend</span>
+              </div>
+              <div id="ownerTopDistributors" class="stack-list"></div>
+            </article>
             <article class="card">
               <div class="card-head">
                 <h2>Order mix</h2>
@@ -217,6 +324,28 @@
               <span>Saved to backend</span>
             </div>
             <form id="ownerSettingsForm" class="dense-form">
+              <fieldset class="settings-fieldset">
+                <legend>Security</legend>
+                <label class="inline-check"><input name="maintenance_mode" type="checkbox"> Maintenance mode</label>
+                <label>Whitelist IPs<textarea name="whitelist_ips" rows="3"></textarea></label>
+                <label>Session timeout minutes<input name="session_timeout_minutes" type="number" min="5"></label>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Admin password</legend>
+                <div class="two-col">
+                  <label>Current password<input name="current_password" type="password" autocomplete="current-password"></label>
+                  <label>New password<input name="new_password" type="password" autocomplete="new-password"></label>
+                </div>
+                <label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password"></label>
+                <button type="button" id="ownerChangePassword">Change password</button>
+              </fieldset>
+
+              <fieldset class="settings-fieldset">
+                <legend>Active sessions</legend>
+                <div id="ownerSessions" class="stack-list"></div>
+              </fieldset>
+
               <fieldset class="settings-fieldset">
                 <legend>Storefront profile</legend>
                 <label>Store name<input name="store_name" required></label>

@@ -464,13 +464,14 @@ function popularityScore(product) {
 
 function renderPopularHero() {
   if (!els.popularHeroPanel) return;
-  const [product] = [...state.products].sort((a, b) => popularityScore(b) - popularityScore(a));
+  const [featured] = state.products.filter(product => product.featured);
+  const product = featured || [...state.products].sort((a, b) => popularityScore(b) - popularityScore(a))[0];
   if (!product) {
     els.popularHeroPanel.innerHTML = "";
     return;
   }
   els.popularHeroPanel.innerHTML = `
-    <p class="eyebrow">Most popular</p>
+    <p class="eyebrow">${product.featured ? "Popular product" : "Most popular"}</p>
     <button class="popular-hero-card" type="button" data-view-product="${product.id}">
       <img src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.name)}" onerror="this.src='/static/images/product-placeholder.webp'">
       <span>
@@ -479,6 +480,80 @@ function renderPopularHero() {
       </span>
     </button>
   `;
+}
+
+function storefrontControls() {
+  return state.config?.settings || {};
+}
+
+function renderStorefrontHeroControls() {
+  const settings = storefrontControls();
+  const carousel = document.querySelector("#promoCarousel");
+  const dots = document.querySelector(".promo-dots");
+  const slides = settings.hero_slides || [];
+  if (carousel && slides.length) {
+    carousel.innerHTML = slides.map(slide => `
+      <article class="promo-slide">
+        <div class="promo-copy">
+          <span class="promo-kicker">${escapeHtml(slide.kicker || "")}</span>
+          <h1>${escapeHtml(slide.title || "")}</h1>
+          <p>${escapeHtml(slide.description || "")}</p>
+          <a class="primary-btn" href="${escapeHtml(slide.cta_link || "/products")}">${escapeHtml(slide.cta_label || "Shop now")}</a>
+        </div>
+        <div class="promo-product-showcase" aria-label="${escapeHtml(slide.title || "Featured products")}">
+          <article>
+            <img src="${escapeHtml(slide.product1_image || "/static/images/product-placeholder.webp")}" alt="${escapeHtml(slide.product1_name || "Product")}" onerror="this.src='/static/images/product-placeholder.webp'">
+            <span>${escapeHtml(slide.product1_name || "")}</span>
+            <strong>${escapeHtml(slide.product1_price || "")}</strong>
+            <small>${escapeHtml(slide.product1_badge || "")}</small>
+          </article>
+          <article>
+            <img src="${escapeHtml(slide.product2_image || "/static/images/product-placeholder.webp")}" alt="${escapeHtml(slide.product2_name || "Product")}" onerror="this.src='/static/images/product-placeholder.webp'">
+            <span>${escapeHtml(slide.product2_name || "")}</span>
+            <strong>${escapeHtml(slide.product2_price || "")}</strong>
+            <small>${escapeHtml(slide.product2_badge || "")}</small>
+          </article>
+        </div>
+      </article>
+    `).join("");
+    if (dots) {
+      dots.innerHTML = slides.map((slide, index) => `<button type="button" class="${index === 0 ? "active" : ""}" aria-label="Show ${escapeHtml(slide.title || "banner")}" data-promo-dot="${index}"></button>`).join("");
+    }
+  }
+
+  const metrics = settings.hero_metrics || [];
+  const metricEl = document.querySelector(".hero-metrics");
+  if (metricEl && metrics.length) {
+    metricEl.innerHTML = metrics.map(metric => `<span><strong>${escapeHtml(metric.strong || "")}</strong>${metric.text ? ` ${escapeHtml(metric.text)}` : ""}</span>`).join("");
+  }
+}
+
+function renderStorefrontStaticControls() {
+  const settings = storefrontControls();
+  const strip = document.querySelector(".marketplace-category-strip");
+  const chips = settings.category_chips || [];
+  if (strip && chips.length) {
+    strip.innerHTML = chips.filter(chip => chip.visible !== false).map((chip, index) => `
+      <button type="button" class="${(state.category === (chip.category || "All")) || (index === 0 && state.category === "All") ? "active" : ""}" data-home-category="${escapeHtml(chip.category || "All")}">
+        <span>${escapeHtml(chip.code || "")}</span><strong>${escapeHtml(chip.label || chip.category || "Category")}</strong>
+      </button>
+    `).join("");
+  }
+  const trust = document.querySelector(".trust-strip");
+  const badges = settings.trust_badges || [];
+  if (trust && badges.length) {
+    trust.innerHTML = badges.map(badge => `<div data-trust-icon="${escapeHtml(badge.icon || "")}"><strong>${escapeHtml(badge.label || "")}</strong><span>${escapeHtml(badge.text || "")}</span></div>`).join("");
+  }
+  const banner = document.querySelector("#announcementBanner");
+  const announcement = document.querySelector("#announcement");
+  if (banner && announcement) {
+    announcement.textContent = settings.announcement || "";
+    const hidden = !settings.announcement_visible || !settings.announcement;
+    banner.classList.toggle("hidden", hidden || localStorage.getItem("mc_announcement_dismissed") === settings.announcement);
+  }
+  if (settings.maintenance_mode && !document.querySelector("#maintenanceOverlay")) {
+    document.body.insertAdjacentHTML("beforeend", `<div class="maintenance-overlay" id="maintenanceOverlay"><div><strong>We're updating our store</strong><span>Please check back shortly.</span></div></div>`);
+  }
 }
 
 function searchMatches() {
@@ -865,7 +940,7 @@ function renderProducts() {
   els.grid.innerHTML = products.map(product => {
     const specEntries = Object.entries(product.specs || {}).slice(0, 3);
     const liked = isWishlisted(product.id);
-    const badge = product.stock <= 0 ? "Out of stock" : popularityScore(product) > 28 ? "Best seller" : product.rating_avg >= 4.5 ? "Top rated" : "Fast moving";
+    const badge = product.on_sale ? "Sale" : product.stock <= 0 ? "Out of stock" : popularityScore(product) > 28 ? "Best seller" : product.rating_avg >= 4.5 ? "Top rated" : "Fast moving";
     return `
       <article class="product-card">
         <button class="wishlist-heart ${liked ? "active" : ""}" type="button" data-wishlist-toggle="${product.id}" aria-label="${liked ? "Remove from" : "Add to"} wishlist">
@@ -887,8 +962,8 @@ function renderProducts() {
             ${specEntries.map(([key, value]) => `<span class="pill">${escapeHtml(key)}: ${escapeHtml(value)}</span>`).join("")}
           </div>
           <div class="price-row">
-            <span class="price">${moneyLabel(product.price)}</span>
-            <span class="stock">${product.stock > 0 ? `${product.stock} in stock` : "Out of stock"}</span>
+            <span class="price">${product.on_sale && product.sale_price ? `${escapeHtml(product.sale_price)} <small>${moneyLabel(product.price)}</small>` : moneyLabel(product.price)}</span>
+            <span class="stock">${product.stock > 0 ? `${product.stock} in stock` : (product.out_of_stock_label ? "Marked out of stock" : "Out of stock")}</span>
           </div>
           <div class="commerce-row">
             <span>GST invoice</span>
@@ -913,6 +988,9 @@ async function loadProducts() {
   if (!state.config) {
     state.config = config;
   }
+  renderStorefrontHeroControls();
+  renderStorefrontStaticControls();
+  bindPromoCarousel();
   if (config.settings?.store_name) {
     document.querySelector("#storeName").innerHTML = brandMarkup(config.settings.store_name);
   }
@@ -922,6 +1000,7 @@ async function loadProducts() {
   }
   renderCategories();
   renderSidebarCategories();
+  renderStorefrontStaticControls();
   renderPopularHero();
   renderSearchSuggestions();
   renderProducts();
@@ -2978,6 +3057,12 @@ function bindEvents() {
     const button = event.target.closest("[data-home-category]");
     if (!button) return;
     setCategory(button.dataset.homeCategory, { scrollToProducts: true });
+    renderStorefrontStaticControls();
+  });
+  document.querySelector("#announcementDismiss")?.addEventListener("click", () => {
+    const message = document.querySelector("#announcement")?.textContent || "";
+    if (message) localStorage.setItem("mc_announcement_dismissed", message);
+    document.querySelector("#announcementBanner")?.classList.add("hidden");
   });
 }
 
